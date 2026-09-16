@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>校園智慧行事曆 Agent - 大溪國中智慧會議協作系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome 6 CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eff6ff',
+              100: '#dbeafe',
+              500: '#3b82f6',
+              600: '#2563eb',
+              700: '#1d4ed8',
+              800: '#1e40af',
+              900: '#1e3a8a',
+            },
+            ai: {
+              50: '#faf5ff',
+              100: '#f3e8ff',
+              500: '#a855f7',
+              600: '#9333ea',
+              700: '#7e22ce',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap');
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background-color: #f8fafc;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #cbd5e1;
+      border-radius: 4px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { background-color: #fff; }
+    }
+  </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+  <!-- ==================== 頂部設定提醒橫幅 (當未換 URL 時提醒) ==================== -->
+  <div id="demoNoticeBanner" class="bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-600 text-white text-xs py-2 px-4 text-center font-medium shadow-sm flex items-center justify-center gap-2 no-print">
+    <span class="bg-white/20 px-2 py-0.5 rounded-full text-[11px] font-bold">✨ AI 展示模式已啟用</span>
+    <span>目前處於模擬互動模式，可體驗完整 AI 公文解析、智慧對話與排程功能！</span>
+    <a href="#setup-guide" onclick="showSetupModal()" class="underline hover:text-yellow-200 font-bold ml-2">點此查看如何連接正式 Google 試算表與 Gemini API</a>
+  </div>
+
+  <!-- ==================== 主導航列 Header ==================== -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <!-- 系統標題與 Logo -->
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-purple-600 flex items-center justify-center text-white shadow-md shadow-brand-500/20">
+          <i class="fa-solid fa-brain text-xl"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-bold text-slate-900 leading-tight">校園智慧行事曆 <span class="bg-gradient-to-r from-purple-600 to-brand-600 bg-clip-text text-transparent">Agent</span></h1>
+            <span class="hidden sm:inline-block px-2 py-0.5 text-[10px] font-bold bg-purple-100 text-purple-700 rounded-full border border-purple-200">
+              <i class="fa-solid fa-sparkles mr-1"></i>Gemini AI 賦能
+            </span>
+          </div>
+          <p class="text-xs text-slate-500">大溪國中智慧會議與多維排程系統</p>
+        </div>
+      </div>
+
+      <!-- 右側動作按鈕組 -->
+      <div class="flex items-center gap-2">
+        <!-- AI 公文速填按鈕 -->
+        <button onclick="openAiExtractModal()" class="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>
+          <span class="hidden md:inline">AI 公文速填</span>
+        </button>
+
+        <!-- AI 對話助理按鈕 -->
+        <button onclick="openAiChatModal()" class="px-3 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 rounded-lg text-sm font-semibold transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-comments"></i>
+          <span class="hidden md:inline">AI 智慧秘書</span>
+        </button>
+
+        <!-- 傳統新增按鈕 -->
+        <button onclick="openAddModal()" class="px-3 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-semibold shadow-sm hover:shadow transition-all flex items-center gap-1.5">
+          <i class="fa-solid fa-plus"></i>
+          <span class="hidden sm:inline">預約會議</span>
+        </button>
+
+        <!-- 列印按鈕 -->
+        <button onclick="window.print()" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="列印 / 匯出 PDF">
+          <i class="fa-solid fa-print text-base"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ==================== 主要內容區 ==================== -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+    <!-- 頂部資訊與切換控制欄 -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
+      <!-- 年月控制與今日跳轉 -->
+      <div class="flex items-center gap-3">
+        <button onclick="jumpToday()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold transition">
+          今天
+        </button>
+        <div class="flex items-center gap-1">
+          <button onclick="prevPeriod()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition">
+            <i class="fa-solid fa-chevron-left text-sm"></i>
+          </button>
+          <span id="currentPeriodLabel" class="text-lg font-black text-slate-900 min-w-[140px] text-center">2026 年 9 月</span>
+          <button onclick="nextPeriod()" class="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 text-slate-600 transition">
+            <i class="fa-solid fa-chevron-right text-sm"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 處室/地點篩選與檢視模式切換 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- 搜尋輸入框 -->
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+          <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="搜尋會議或地點..." class="pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 w-36 sm:w-44 transition">
+        </div>
+
+        <!-- 分類過濾選單 -->
+        <select id="categoryFilter" onchange="handleCategoryFilter(this.value)" class="text-xs py-1.5 px-3 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-700">
+          <option value="ALL">全部分類</option>
+          <option value="全校會議">全校會議</option>
+          <option value="處室會議">處室會議</option>
+          <option value="教學研討">教學研討</option>
+          <option value="重大活動">重大活動</option>
+          <option value="其他">其他</option>
+        </select>
+
+        <!-- 模式切換鈕 (月 / 週 / 日 / 清單) -->
+        <div class="flex bg-slate-100 p-1 rounded-lg border border-slate-200 text-xs font-semibold">
+          <button onclick="switchView('month')" id="btnViewMonth" class="px-3 py-1 rounded-md bg-white text-brand-700 shadow-xs transition">月曆</button>
+          <button onclick="switchView('week')" id="btnViewWeek" class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">週曆</button>
+          <button onclick="switchView('day')" id="btnViewDay" class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">日曆</button>
+          <button onclick="switchView('list')" id="btnViewList" class="px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition">清單</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 行事曆主體渲染容器 -->
+    <div id="calendarContainer" class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden min-h-[560px]">
+      <!-- 這裡動態置換月曆、週曆、日曆或清單 HTML -->
+    </div>
+
+    <!-- AI 助理快速浮動工具條 (右下角) -->
+    <div class="fixed bottom-6 right-6 flex flex-col gap-3 z-20 no-print">
+      <button onclick="openAiExtractModal()" class="group relative flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xl hover:scale-105 active:scale-95 transition-all">
+        <i class="fa-solid fa-wand-magic-sparkles text-xl"></i>
+        <span class="absolute right-16 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md">
+          ✨ 貼上文字 / 公文一鍵解析
+        </span>
+      </button>
+      <button onclick="openAiChatModal()" class="group relative flex items-center justify-center w-14 h-14 rounded-full bg-white text-purple-700 border-2 border-purple-500 shadow-xl hover:scale-105 active:scale-95 transition-all">
+        <i class="fa-solid fa-robot text-xl"></i>
+        <span class="absolute right-16 bg-slate-900 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-md">
+          💬 與 AI 秘書對話排程
+        </span>
+      </button>
+    </div>
+  </main>
+
+  <!-- ==================== 彈窗 1：AI 公文/通知一鍵萃取 (核心特色) ==================== -->
+  <div id="aiExtractModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-purple-100 flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+      <!-- 標題欄 -->
+      <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+            <i class="fa-solid fa-wand-magic-sparkles text-yellow-300"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-base leading-tight">AI 公文與通知文字「一鍵速填」</h3>
+            <p class="text-xs text-purple-100">將雜亂公文、Line通知或Email貼入，Gemini 自動萃取會議要素</p>
+          </div>
+        </div>
+        <button onclick="closeModal('aiExtractModal')" class="text-purple-200 hover:text-white p-1">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <!-- 內容區 -->
+      <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+        <!-- 快速範例按鈕 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-500 mb-1.5">或點選測試範例體驗：</label>
+          <div class="flex flex-wrap gap-2 text-xs">
+            <button onclick="fillAiSample(1)" class="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition">
+              範例 1: 課發會公文
+            </button>
+            <button onclick="fillAiSample(2)" class="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition">
+              範例 2: 處室主任會報
+            </button>
+            <button onclick="fillAiSample(3)" class="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-md border border-purple-200 transition">
+              範例 3: 輔導室家長座談
+            </button>
+          </div>
+        </div>
+
+        <!-- 輸入文字框 -->
+        <div>
+          <label class="block text-sm font-semibold text-slate-700 mb-1">貼上原始文字內容：</label>
+          <textarea id="aiRawInput" rows="5" placeholder="請將公文本文、處室會議通知、Line群組公告文字直接貼在此處..." class="w-full p-3 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition"></textarea>
+        </div>
+
+        <!-- 執行按鈕 -->
+        <button id="btnRunAiExtract" onclick="runAiExtract()" class="w-full py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md transition flex items-center justify-center gap-2">
+          <i class="fa-solid fa-brain"></i>
+          <span>呼叫 Gemini AI 智慧分析</span>
+        </button>
+
+        <!-- AI 解析結果預覽卡片 (初始隱藏) -->
+        <div id="aiResultCard" class="hidden border border-purple-200 bg-purple-50/50 rounded-xl p-4 space-y-3">
+          <div class="flex items-center justify-between border-b border-purple-200 pb-2">
+            <span class="text-xs font-bold text-purple-800 flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-check text-emerald-500"></i> AI 結構化辨識成功
+            </span>
+            <span id="aiConfidenceBadge" class="text-[10px] bg-purple-200 text-purple-800 px-2 py-0.5 rounded-full font-semibold">可信度: 高</span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+            <div><span class="text-slate-400 block">會議標題</span><span id="resTitle" class="font-bold text-slate-800 text-sm">--</span></div>
+            <div><span class="text-slate-400 block">日期</span><span id="resDate" class="font-bold text-slate-800">--</span></div>
+            <div><span class="text-slate-400 block">時段</span><span id="resTime" class="font-bold text-brand-600">--</span></div>
+            <div><span class="text-slate-400 block">地點</span><span id="resLocation" class="font-bold text-slate-800">--</span></div>
+            <div><span class="text-slate-400 block">主辦處室</span><span id="resDept" class="font-bold text-slate-800">--</span></div>
+            <div><span class="text-slate-400 block">分類</span><span id="resCat" class="font-bold text-slate-800">--</span></div>
+          </div>
+          <div>
+            <span class="text-slate-400 text-xs block">摘要與待辦</span>
+            <p id="resDesc" class="text-xs text-slate-700 bg-white p-2.5 rounded-lg border border-purple-100 mt-1">--</p>
+          </div>
+
+          <button onclick="applyAiToForm()" class="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-arrow-right-to-bracket"></i>
+            <span>帶入預約表單並檢查衝突</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 2：AI 智慧秘書對話 (自然語言排程) ==================== -->
+  <div id="aiChatModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col h-[580px] animate-in fade-in zoom-in-95 duration-200">
+      <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-full bg-purple-500/20 text-purple-400 flex items-center justify-center border border-purple-400/30">
+            <i class="fa-solid fa-robot text-sm"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm">AI 會議排程秘書</h3>
+            <p class="text-[10px] text-emerald-400 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> 行事曆資料即時在線
+            </p>
+          </div>
+        </div>
+        <button onclick="closeModal('aiChatModal')" class="text-slate-400 hover:text-white">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <!-- 對話訊息串流區 -->
+      <div id="chatMessages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50 text-xs custom-scrollbar">
+        <!-- 預設歡迎詞 -->
+        <div class="flex gap-2">
+          <div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-robot text-xs"></i>
+          </div>
+          <div class="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-200 shadow-xs max-w-[85%] text-slate-700 space-y-1">
+            <p>您好！我是大溪國中的 AI 會議排程秘書 🤖</p>
+            <p>您可以直接以自然語言詢問我，例如：</p>
+            <ul class="list-disc pl-4 text-purple-700 font-medium space-y-0.5 mt-1 cursor-pointer">
+              <li onclick="sendPresetChat(this.innerText)">下週二下午第二會議室有空檔嗎？</li>
+              <li onclick="sendPresetChat(this.innerText)">幫我查週四上午教務處有沒有排會議？</li>
+              <li onclick="sendPresetChat(this.innerText)">我想安排 1 小時的課發會，這週五有推薦時段嗎？</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- 對話輸入區 -->
+      <div class="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+        <input type="text" id="chatInput" onkeydown="if(event.key==='Enter') sendChatMessage()" placeholder="輸入問題或排程需求..." class="flex-1 px-3 py-2 text-xs bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition">
+        <button onclick="sendChatMessage()" class="w-9 h-9 bg-purple-600 hover:bg-purple-700 text-white rounded-xl flex items-center justify-center shrink-0 transition shadow-sm">
+          <i class="fa-solid fa-paper-plane text-xs"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 3：預約會議表單 (含衝突自動防擋) ==================== -->
+  <div id="addEventModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+      <div class="bg-brand-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-calendar-plus text-brand-300"></i>
+          <h3 class="font-bold text-base">登記預約會議</h3>
+        </div>
+        <button onclick="closeModal('addEventModal')" class="text-slate-300 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <form id="addEventForm" onsubmit="submitAddEvent(event)" class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+        <!-- 標題 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">會議名稱 <span class="text-red-500">*</span></label>
+          <input type="text" id="formTitle" required placeholder="例：115學年度第1次課程發展委員會" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:bg-white">
+        </div>
+
+        <!-- 日期與時段 -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">日期 <span class="text-red-500">*</span></label>
+            <input type="date" id="formDate" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">開始時間 <span class="text-red-500">*</span></label>
+            <input type="time" id="formStartTime" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">結束時間 <span class="text-red-500">*</span></label>
+            <input type="time" id="formEndTime" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+          </div>
+        </div>
+
+        <!-- 地點與主辦處室 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">會議地點 <span class="text-red-500">*</span></label>
+            <input type="text" id="formLocation" required list="locationSuggestions" placeholder="例：二樓第一會議室" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+            <datalist id="locationSuggestions">
+              <option value="二樓第一會議室"></option>
+              <option value="三樓研討室"></option>
+              <option value="圖書館視聽教室"></option>
+              <option value="行政大樓校史室"></option>
+              <option value="活動中心"></option>
+            </datalist>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-700 mb-1">主辦單位/處室 <span class="text-red-500">*</span></label>
+            <input type="text" id="formDepartment" required list="deptSuggestions" placeholder="例：教務處教學組" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+            <datalist id="deptSuggestions">
+              <option value="校長室"></option>
+              <option value="教務處"></option>
+              <option value="學務處"></option>
+              <option value="總務處"></option>
+              <option value="輔導室"></option>
+              <option value="人事室"></option>
+              <option value="會計室"></option>
+            </datalist>
+          </div>
+        </div>
+
+        <!-- 分類 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">活動分類</label>
+          <select id="formCategory" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+            <option value="全校會議">全校會議</option>
+            <option value="處室會議">處室會議</option>
+            <option value="教學研討">教學研討</option>
+            <option value="重大活動">重大活動</option>
+            <option value="其他">其他</option>
+          </select>
+        </div>
+
+        <!-- 備註說明 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">備註說明 (議程重點或需攜帶資料)</label>
+          <textarea id="formDescription" rows="2" placeholder="選填，簡述會議目的或注意事項" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500"></textarea>
+        </div>
+
+        <!-- 刪除管理密碼 -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1">設定刪除密碼 (SHA-256 加密防誤刪)</label>
+          <input type="password" id="formPassword" placeholder="日後如需取消/刪除此會議時使用" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
+          <p class="text-[11px] text-slate-400 mt-1">※ 若未填寫密碼，日後將允許直接刪除</p>
+        </div>
+
+        <!-- 衝突錯誤警告提示框 -->
+        <div id="formConflictAlert" class="hidden p-3 bg-red-50 border border-red-200 text-red-700 rounded-xl text-xs space-y-1">
+          <div class="font-bold flex items-center gap-1.5"><i class="fa-solid fa-triangle-exclamation"></i> 發現時段衝突！</div>
+          <p id="formConflictMsg">該地點已有會議安排。</p>
+        </div>
+
+        <!-- 按鈕 -->
+        <div class="pt-2 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeModal('addEventModal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-lg text-sm font-semibold">取消</button>
+          <button type="submit" id="btnSubmitAdd" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-sm font-bold shadow-md transition">確認預約</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 4：會議詳情與 AI 議程/通知生成 ==================== -->
+  <div id="eventDetailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <h3 id="detailModalTitle" class="font-bold text-base truncate">會議詳情</h3>
+        <button onclick="closeModal('eventDetailModal')" class="text-slate-300 hover:text-white">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar text-sm">
+        <div class="space-y-2 pb-4 border-b border-slate-200">
+          <div class="flex items-center gap-2">
+            <span id="detailBadgeCat" class="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-bold">全校會議</span>
+            <span id="detailDept" class="text-xs font-semibold text-slate-500">教務處</span>
+          </div>
+          <h4 id="detailTitle" class="text-lg font-black text-slate-900">會議名稱</h4>
+          <div class="text-slate-600 text-xs space-y-1 pt-1">
+            <p><i class="fa-regular fa-clock w-5 text-slate-400"></i><span id="detailDateTime">2026-09-18 14:00 ~ 15:00</span></p>
+            <p><i class="fa-solid fa-location-dot w-5 text-slate-400"></i><span id="detailLocation">二樓第一會議室</span></p>
+          </div>
+          <div id="detailDescBox" class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 mt-2">
+            <span class="font-bold text-slate-500 block mb-1">備註說明：</span>
+            <p id="detailDesc">無</p>
+          </div>
+        </div>
+
+        <!-- AI 協作小工具區 -->
+        <div class="bg-purple-50 p-4 rounded-xl border border-purple-200 space-y-3">
+          <div class="flex items-center gap-2 text-purple-900 font-bold text-xs">
+            <i class="fa-solid fa-sparkles text-purple-600"></i>
+            <span>AI 行政協作秘書</span>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button onclick="generateLineNotification()" class="p-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs">
+              <i class="fa-brands fa-line text-emerald-500 text-sm"></i> 生成推播文案
+            </button>
+            <button onclick="generateAgendaDraft()" class="p-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs">
+              <i class="fa-solid fa-file-lines text-blue-500 text-sm"></i> 產出議程範本
+            </button>
+          </div>
+          <!-- 產出文字預覽區 (可複製) -->
+          <div id="aiGeneratedOutputBox" class="hidden space-y-2 pt-2 border-t border-purple-200">
+            <div class="flex items-center justify-between">
+              <span id="aiOutputLabel" class="text-[11px] font-bold text-purple-800">產出內容：</span>
+              <button onclick="copyGeneratedText()" class="text-[11px] text-purple-700 hover:text-purple-900 font-bold flex items-center gap-1">
+                <i class="fa-regular fa-copy"></i> 複製
+              </button>
+            </div>
+            <textarea id="aiOutputText" rows="4" readonly class="w-full text-xs p-2.5 bg-white border border-purple-200 rounded-lg font-mono focus:outline-none"></textarea>
+          </div>
+        </div>
+
+        <!-- 刪除功能 -->
+        <div class="pt-2 flex items-center justify-between">
+          <button onclick="promptDeleteEvent()" class="text-red-500 hover:text-red-700 text-xs font-bold flex items-center gap-1">
+            <i class="fa-solid fa-trash"></i> 取消/刪除此會議
+          </button>
+          <button onclick="closeModal('eventDetailModal')" class="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg">關閉</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== 彈窗 5：設定指引說明 Modal ==================== -->
+  <div id="setupModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-xl w-full shadow-2xl p-6 border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <h3 class="font-bold text-base text-slate-900 flex items-center gap-2">
+          <i class="fa-solid fa-screwdriver-wrench text-brand-600"></i> 如何設定正式 Google 試算表與 Gemini API
+        </h3>
+        <button onclick="closeModal('setupModal')" class="text-slate-400 hover:text-slate-700">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div class="text-xs text-slate-600 space-y-3 leading-relaxed">
+        <p>目前系統處於<strong>展示模式</strong>，內建完整智慧模擬。若要正式連接學校 Google 雲端試算表與免費 Gemini API，請依照以下三步：</p>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+          <p class="font-bold text-slate-800">步驟一：建立 Google Apps Script (GAS)</p>
+          <p>開啟 Google Sheets ➔ 點選「擴充功能」➔「Apps Script」，將本專案的 <code>gas_code.gs</code> 內容複製貼入。</p>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+          <p class="font-bold text-slate-800">步驟二：設定免費 Gemini API Key (資安合規)</p>
+          <p>至 Google AI Studio (aistudio.google.com) 免費取得 API Key。在 Apps Script 專案設定中的「指令碼屬性」新增 <code>GEMINI_API_KEY</code>，金鑰儲存於後端，絕不洩漏前端。</p>
+        </div>
+        <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2">
+          <p class="font-bold text-slate-800">步驟三：部署 Web App 並換上網址</p>
+          <p>點「部署」➔「新增部署」➔ 類型選「網頁應用程式」，將獲得的網址貼至 <code>index.html</code> 頂部的 <code>GAS_API_URL</code> 常數即可！</p>
+        </div>
+      </div>
+      <div class="text-right pt-2">
+        <button onclick="closeModal('setupModal')" class="px-4 py-2 bg-brand-600 text-white rounded-lg text-xs font-bold">我知道了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== JAVASCRIPT 邏輯核心 ==================== -->
+  <script>
+    // ========================================================
+    // ★★★ 正式部署設定區 ★★★
+    // ========================================================
+    // 請將下方改為您的 Google Apps Script 部署網址。
+    // 若為 'DEMO_MODE'，系統將自動開啟本地智慧模擬資料庫，方便立即體驗與展示！
+    const GAS_API_URL = 'DEMO_MODE';
+
+    // ── 核心狀態變數 ──────────────────────────────────────────
+    let currentView = 'month'; // 'month' | 'week' | 'day' | 'list'
+    let currentDate = new Date();
+    let eventsData = [];
+    let activeEvent = null; // 當前選中查看詳情的會議
+
+    // ── 預設展示模擬資料 (Demo 模式用) ─────────────────────────
+    const MOCK_EVENTS = [
+      {
+        id: 'demo-01',
+        title: '115學年度上學期第1次全校校務會議',
+        date: formatDateStr(new Date()),
+        startTime: '13:30',
+        endTime: '15:30',
+        location: '活動中心',
+        department: '校長室/教務處',
+        category: '全校會議',
+        description: '報告學期校務發展計畫，請各組備妥10分鐘簡報與各處室同仁準時出席。'
+      },
+      {
+        id: 'demo-02',
+        title: '課程發展委員會 (課發會)',
+        date: formatDateOffset(2),
+        startTime: '09:10',
+        endTime: '11:00',
+        location: '二樓第一會議室',
+        department: '教務處教學組',
+        category: '教學研討',
+        description: '審查各年級彈性學習課程規劃表與雙語教學進度。'
+      },
+      {
+        id: 'demo-03',
+        title: '國中部親師座談會協調會',
+        date: formatDateOffset(4),
+        startTime: '14:00',
+        endTime: '15:30',
+        location: '三樓研討室',
+        department: '輔導室',
+        category: '處室會議',
+        description: '討論親師座談會當日動線引導、家長簽到與特教輔導諮詢專線安排。'
+      },
+      {
+        id: 'demo-04',
+        title: '校園消防安全防護演練協調會',
+        date: formatDateOffset(7),
+        startTime: '10:10',
+        endTime: '11:00',
+        location: '二樓第一會議室',
+        department: '總務處',
+        category: '處室會議',
+        description: '確認全校疏散路線演練時間及避難包檢查要點。'
+      }
+    ];
+
+    // ── 初始化 ────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      // 判斷是否正式連線
+      if (GAS_API_URL !== 'DEMO_MODE') {
+        document.getElementById('demoNoticeBanner').classList.add('hidden');
+        fetchLiveEvents();
+      } else {
+        eventsData = [...MOCK_EVENTS];
+        renderCalendar();
+      }
+    });
+
+    // ── 抓取雲端會議資料 ──────────────────────────────────────
+    async function fetchLiveEvents() {
+      try {
+        const res = await fetch(`${GAS_API_URL}?action=getEvents`);
+        const json = await res.json();
+        if (json.status === 'success') {
+          eventsData = json.data || [];
+          renderCalendar();
+        } else {
+          console.warn('雲端資料回傳非成功狀態，切換至備援模式', json.message);
+          eventsData = [...MOCK_EVENTS];
+          renderCalendar();
+        }
+      } catch (err) {
+        console.error('GAS 連線異常:', err);
+        eventsData = [...MOCK_EVENTS];
+        renderCalendar();
+      }
+    }
+
+    // ── 日期輔助函式 ──────────────────────────────────────────
+    function formatDateStr(d) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    function formatDateOffset(offsetDays) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      return formatDateStr(d);
+    }
+
+    // ── 切換檢視模式 (月/週/日/清單) ─────────────────────────
+    function switchView(view) {
+      currentView = view;
+      ['Month', 'Week', 'Day', 'List'].forEach(v => {
+        const btn = document.getElementById(`btnView${v}`);
+        if (v.toLowerCase() === view) {
+          btn.className = 'px-3 py-1 rounded-md bg-white text-brand-700 shadow-xs transition font-bold';
+        } else {
+          btn.className = 'px-3 py-1 rounded-md text-slate-600 hover:text-slate-900 transition font-normal';
+        }
+      });
+      renderCalendar();
+    }
+
+    function prevPeriod() {
+      if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() - 1);
+      else if (currentView === 'week') currentDate.setDate(currentDate.getDate() - 7);
+      else if (currentView === 'day') currentDate.setDate(currentDate.getDate() - 1);
+      else currentDate.setMonth(currentDate.getMonth() - 1);
+      renderCalendar();
+    }
+
+    function nextPeriod() {
+      if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + 1);
+      else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + 7);
+      else if (currentView === 'day') currentDate.setDate(currentDate.getDate() + 1);
+      else currentDate.setMonth(currentDate.getMonth() + 1);
+      renderCalendar();
+    }
+
+    function jumpToday() {
+      currentDate = new Date();
+      renderCalendar();
+    }
+
+    // ── 渲染入口 ──────────────────────────────────────────────
+    function renderCalendar() {
+      const label = document.getElementById('currentPeriodLabel');
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+
+      if (currentView === 'month') {
+        label.innerText = `${year} 年 ${month} 月`;
+        renderMonthView();
+      } else if (currentView === 'week') {
+        label.innerText = `${year} 年 ${month} 月 (第 ${getWeekNumber(currentDate)} 週)`;
+        renderWeekView();
+      } else if (currentView === 'day') {
+        label.innerText = `${year} 年 ${month} 月 ${currentDate.getDate()} 日`;
+        renderDayView();
+      } else {
+        label.innerText = `${year} 年 會議總清單`;
+        renderListView();
+      }
+    }
+
+    function getWeekNumber(d) {
+      const firstDayOfYear = new Date(d.getFullYear(), 0, 1);
+      const pastDaysOfYear = (d - firstDayOfYear) / 86400000;
+      return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+    }
+
+    // ── 1. 渲染月曆檢視 ──────────────────────────────────────
+    function renderMonthView() {
+      const container = document.getElementById('calendarContainer');
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
+
+      const firstDay = new Date(year, month, 1);
+      const lastDay = new Date(year, month + 1, 0);
+      const startDayIndex = firstDay.getDay(); // 0 是週日
+      const totalDays = lastDay.getDate();
+
+      let html = `
+        <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs font-bold text-slate-600 py-2.5">
+          <div class="text-red-500">週日</div>
+          <div>週一</div>
+          <div>週二</div>
+          <div>週三</div>
+          <div>週四</div>
+          <div>週五</div>
+          <div class="text-emerald-600">週六</div>
+        </div>
+        <div class="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 bg-slate-50/30">
+      `;
+
+      // 上個月填補空白
+      for (let i = 0; i < startDayIndex; i++) {
+        html += `<div class="min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
+      }
+
+      const todayStr = formatDateStr(new Date());
+
+      for (let day = 1; day <= totalDays; day++) {
+        const thisDate = new Date(year, month, day);
+        const thisDateStr = formatDateStr(thisDate);
+        const isToday = thisDateStr === todayStr;
+
+        // 篩選當日會議
+        const dayEvents = filterEvents(eventsData).filter(e => e.date === thisDateStr);
+
+        html += `
+          <div class="min-h-[110px] p-1.5 sm:p-2 bg-white hover:bg-slate-50/80 transition-colors flex flex-col justify-between group cursor-pointer" onclick="quickAddDate('${thisDateStr}')">
+            <div class="flex items-center justify-between mb-1">
+              <span class="w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${isToday ? 'bg-brand-600 text-white' : 'text-slate-700'}">
+                ${day}
+              </span>
+              <button onclick="event.stopPropagation(); quickAddDate('${thisDateStr}')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-brand-600 p-0.5 text-xs transition" title="在此日登記會議">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+            </div>
+            
+            <div class="flex-1 space-y-1 overflow-y-auto max-h-[85px] custom-scrollbar">
+              ${dayEvents.map(e => `
+                <div onclick="event.stopPropagation(); openEventDetail('${e.id}')" class="px-1.5 py-1 rounded text-[11px] font-medium truncate flex items-center gap-1 border ${getBadgeClass(e.category)}" title="${e.startTime}~${e.endTime} ${e.title} (${e.location})">
+                  <span class="w-1.5 h-1.5 rounded-full ${getDotColor(e.category)} shrink-0"></span>
+                  <span class="truncate">${e.startTime} ${e.title}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      // 下個月結尾填補
+      const totalRendered = startDayIndex + totalDays;
+      const trailing = (7 - (totalRendered % 7)) % 7;
+      for (let i = 0; i < trailing; i++) {
+        html += `<div class="min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
+      }
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    // ── 2. 渲染週曆檢視 ──────────────────────────────────────
+    function renderWeekView() {
+      const container = document.getElementById('calendarContainer');
+      const startOfWeek = new Date(currentDate);
+      startOfWeek.setDate(currentDate.getDate() - currentDate.getDay()); // 週日開始
+
+      const weekDates = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(startOfWeek);
+        d.setDate(startOfWeek.getDate() + i);
+        weekDates.push(d);
+      }
+
+      const todayStr = formatDateStr(new Date());
+
+      let html = `
+        <div class="grid grid-cols-7 border-b border-slate-200 bg-slate-50 text-center text-xs py-3 divide-x divide-slate-200">
+          ${weekDates.map(d => {
+            const dStr = formatDateStr(d);
+            const isToday = dStr === todayStr;
+            const weekDays = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
+            return `
+              <div class="${isToday ? 'bg-brand-50' : ''}">
+                <span class="block text-slate-500 text-[11px]">${weekDays[d.getDay()]}</span>
+                <span class="text-sm font-bold ${isToday ? 'text-brand-600' : 'text-slate-800'}">${d.getMonth()+1}/${d.getDate()}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="grid grid-cols-7 divide-x divide-slate-100 min-h-[460px]">
+          ${weekDates.map(d => {
+            const dStr = formatDateStr(d);
+            const dayEvents = filterEvents(eventsData).filter(e => e.date === dStr);
+            return `
+              <div class="p-2 space-y-2 bg-white hover:bg-slate-50/50 transition cursor-pointer flex flex-col justify-start" onclick="quickAddDate('${dStr}')">
+                ${dayEvents.map(e => `
+                  <div onclick="event.stopPropagation(); openEventDetail('${e.id}')" class="p-2 rounded-lg border text-xs ${getBadgeClass(e.category)} space-y-1 shadow-2xs hover:shadow transition">
+                    <div class="font-bold truncate text-slate-800">${e.title}</div>
+                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${e.startTime}~${e.endTime}</div>
+                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-solid fa-location-dot"></i> ${e.location}</div>
+                  </div>
+                `).join('')}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+      container.innerHTML = html;
+    }
+
+    // ── 3. 渲染日曆檢視 ──────────────────────────────────────
+    function renderDayView() {
+      const container = document.getElementById('calendarContainer');
+      const dStr = formatDateStr(currentDate);
+      const dayEvents = filterEvents(eventsData).filter(e => e.date === dStr);
+
+      let html = `
+        <div class="p-6 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+            <div>
+              <h3 class="text-xl font-bold text-slate-900">${dStr} 當日會議排程</h3>
+              <p class="text-xs text-slate-500">共 ${dayEvents.length} 場會議登記</p>
+            </div>
+            <button onclick="quickAddDate('${dStr}')" class="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition">
+              <i class="fa-solid fa-plus mr-1"></i>此日預約
+            </button>
+          </div>
+
+          <div class="space-y-3">
+            ${dayEvents.length === 0 ? `
+              <div class="py-16 text-center text-slate-400">
+                <i class="fa-solid fa-calendar-check text-4xl mb-2 text-slate-300"></i>
+                <p class="text-sm">本日目前尚無任何會議排程，歡迎預約！</p>
+              </div>
+            ` : dayEvents.map(e => `
+              <div onclick="openEventDetail('${e.id}')" class="p-4 rounded-xl border ${getBadgeClass(e.category)} flex items-center justify-between hover:shadow-md transition cursor-pointer">
+                <div class="space-y-1">
+                  <div class="flex items-center gap-2">
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getDotColor(e.category)} text-white">${e.category}</span>
+                    <span class="text-xs font-semibold text-slate-500">${e.department}</span>
+                  </div>
+                  <h4 class="text-base font-bold text-slate-800">${e.title}</h4>
+                  <div class="flex items-center gap-4 text-xs text-slate-600 pt-1">
+                    <span><i class="fa-regular fa-clock mr-1 text-slate-400"></i>${e.startTime} ~ ${e.endTime}</span>
+                    <span><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${e.location}</span>
+                  </div>
+                </div>
+                <i class="fa-solid fa-chevron-right text-slate-400"></i>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+      container.innerHTML = html;
+    }
+
+    // ── 4. 渲染清單檢視 ──────────────────────────────────────
+    function renderListView() {
+      const container = document.getElementById('calendarContainer');
+      const filtered = filterEvents(eventsData).sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
+
+      let html = `
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-600 font-bold">
+                <th class="p-3.5">日期</th>
+                <th class="p-3.5">時段</th>
+                <th class="p-3.5">會議名稱</th>
+                <th class="p-3.5">地點</th>
+                <th class="p-3.5">主辦處室</th>
+                <th class="p-3.5">分類</th>
+                <th class="p-3.5 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              ${filtered.length === 0 ? `
+                <tr><td colspan="7" class="text-center p-12 text-slate-400">無符合條件的會議紀錄</td></tr>
+              ` : filtered.map(e => `
+                <tr onclick="openEventDetail('${e.id}')" class="hover:bg-slate-50/80 transition cursor-pointer">
+                  <td class="p-3.5 font-bold text-slate-800">${e.date}</td>
+                  <td class="p-3.5 font-semibold text-brand-600">${e.startTime} ~ ${e.endTime}</td>
+                  <td class="p-3.5 font-bold text-slate-900 max-w-xs truncate">${e.title}</td>
+                  <td class="p-3.5 text-slate-700">${e.location}</td>
+                  <td class="p-3.5 text-slate-600">${e.department}</td>
+                  <td class="p-3.5">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeClass(e.category)}">
+                      ${e.category}
+                    </span>
+                  </td>
+                  <td class="p-3.5 text-center">
+                    <button class="text-brand-600 hover:text-brand-800 font-bold">查看</button>
+                  </td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+      container.innerHTML = html;
+    }
+
+    // ── 標籤顏色工具 ──────────────────────────────────────────
+    function getBadgeClass(cat) {
+      if (cat === '全校會議') return 'bg-blue-50 border-blue-200 text-blue-800';
+      if (cat === '教學研討') return 'bg-emerald-50 border-emerald-200 text-emerald-800';
+      if (cat === '處室會議') return 'bg-amber-50 border-amber-200 text-amber-800';
+      if (cat === '重大活動') return 'bg-purple-50 border-purple-200 text-purple-800';
+      return 'bg-slate-50 border-slate-200 text-slate-700';
+    }
+
+    function getDotColor(cat) {
+      if (cat === '全校會議') return 'bg-blue-500';
+      if (cat === '教學研討') return 'bg-emerald-500';
+      if (cat === '處室會議') return 'bg-amber-500';
+      if (cat === '重大活動') return 'bg-purple-500';
+      return 'bg-slate-400';
+    }
+
+    // ── 搜尋與過濾邏輯 ────────────────────────────────────────
+    let currentSearchTerm = '';
+    let currentCategory = 'ALL';
+
+    function handleSearch(term) {
+      currentSearchTerm = term.trim().toLowerCase();
+      renderCalendar();
+    }
+
+    function handleCategoryFilter(cat) {
+      currentCategory = cat;
+      renderCalendar();
+    }
+
+    function filterEvents(list) {
+      return list.filter(e => {
+        const matchCat = currentCategory === 'ALL' || e.category === currentCategory;
+        const matchSearch = !currentSearchTerm ||
+          e.title.toLowerCase().includes(currentSearchTerm) ||
+          e.location.toLowerCase().includes(currentSearchTerm) ||
+          e.department.toLowerCase().includes(currentSearchTerm);
+        return matchCat && matchSearch;
+      });
+    }
+
+    // ========================================================
+    // ★★★ 彈窗與表單互動邏輯 ★★★
+    // ========================================================
+    function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+    function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+    function quickAddDate(dateStr) {
+      document.getElementById('formDate').value = dateStr;
+      document.getElementById('formStartTime').value = '09:00';
+      document.getElementById('formEndTime').value = '10:00';
+      openAddModal();
+    }
+
+    function openAddModal() {
+      document.getElementById('formConflictAlert').classList.add('hidden');
+      if (!document.getElementById('formDate').value) {
+        document.getElementById('formDate').value = formatDateStr(new Date());
+      }
+      openModal('addEventModal');
+    }
+
+    // ── 會議詳情檢視與 AI 工具呼叫 ────────────────────────────
+    function openEventDetail(id) {
+      const ev = eventsData.find(e => e.id === id);
+      if (!ev) return;
+      activeEvent = ev;
+
+      document.getElementById('detailModalTitle').innerText = ev.title;
+      document.getElementById('detailTitle').innerText = ev.title;
+      document.getElementById('detailDept').innerText = ev.department || '未填寫主辦處室';
+      document.getElementById('detailDateTime').innerText = `${ev.date} ${ev.startTime} ~ ${ev.endTime}`;
+      document.getElementById('detailLocation').innerText = ev.location;
+      document.getElementById('detailDesc').innerText = ev.description || '無補充備註';
+      document.getElementById('detailBadgeCat').innerText = ev.category || '一般會議';
+      document.getElementById('detailBadgeCat').className = `px-2.5 py-0.5 rounded-full text-xs font-bold border ${getBadgeClass(ev.category)}`;
+      document.getElementById('aiGeneratedOutputBox').classList.add('hidden');
+
+      openModal('eventDetailModal');
+    }
+
+    // ── AI 生成 LINE 推播文案 ────────────────────────────────
+    async function generateLineNotification() {
+      if (!activeEvent) return;
+      const box = document.getElementById('aiGeneratedOutputBox');
+      const label = document.getElementById('aiOutputLabel');
+      const textarea = document.getElementById('aiOutputText');
+
+      box.classList.remove('hidden');
+      label.innerText = '✨ Line / 校園推播通知草稿：';
+      textarea.value = 'AI 正在為您撰寫推播文字中...';
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        setTimeout(() => {
+          textarea.value = `【校園會議通知 📢】\n\n各位同仁好：\n${activeEvent.department} 將於 ${activeEvent.date} 召開「${activeEvent.title}」，詳細資訊如下：\n\n📍 地點：${activeEvent.location}\n⏰ 時間：${activeEvent.startTime} ~ ${activeEvent.endTime}\n📝 議程備註：${activeEvent.description || '請相關同仁準時出席備妥業務資料。'}\n\n如有排程衝突請盡早聯繫承辦處室，謝謝大家！`;
+        }, 600);
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'aiGenerateAgenda', meetingData: activeEvent })
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          textarea.value = json.data.pushMessage || '產出完成';
+        } else {
+          textarea.value = 'AI 產出失敗：' + (json.message || '請檢查 API Key');
+        }
+      } catch (e) {
+        textarea.value = '連線異常，已切換至預設模板生成。';
+      }
+    }
+
+    // ── AI 生成會議議程草案 ──────────────────────────────────
+    async function generateAgendaDraft() {
+      if (!activeEvent) return;
+      const box = document.getElementById('aiGeneratedOutputBox');
+      const label = document.getElementById('aiOutputLabel');
+      const textarea = document.getElementById('aiOutputText');
+
+      box.classList.remove('hidden');
+      label.innerText = '✨ 標準會議議程範本草稿：';
+      textarea.value = 'AI 正在規劃議程草案中...';
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        setTimeout(() => {
+          textarea.value = `【大溪國中 會議議程表草案】\n\n會議名稱：${activeEvent.title}\n會議時間：${activeEvent.date} (${activeEvent.startTime}~${activeEvent.endTime})\n會議地點：${activeEvent.location}\n主席：校長 / 召集人　紀錄：${activeEvent.department}\n\n─ 議程規劃 ─\n一、會議開始 (主席宣布開會及致詞) [5分鐘]\n二、上次會議決議案執行情形報告 [10分鐘]\n三、各組業務現況報告與數據彙整 [20分鐘]\n四、提案討論與決議：\n    案由一：${activeEvent.title} 核心推行計畫審議\n    說明：${activeEvent.description || '依規定排定討論推動措施'}\n五、臨時動議 [10分鐘]\n六、散會`;
+        }, 600);
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'aiGenerateAgenda', meetingData: activeEvent })
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          textarea.value = json.data.agendaDraft || '產出完成';
+        } else {
+          textarea.value = 'AI 產出失敗：' + (json.message || '請檢查 API Key');
+        }
+      } catch (e) {
+        textarea.value = '連線異常，已切換至預設範本。';
+      }
+    }
+
+    function copyGeneratedText() {
+      const txt = document.getElementById('aiOutputText').value;
+      navigator.clipboard.writeText(txt).then(() => {
+        alert('文字已複製到剪貼簿！');
+      });
+    }
+
+    // ── 刪除會議紀錄 ──────────────────────────────────────────
+    async function promptDeleteEvent() {
+      if (!activeEvent) return;
+      const pwd = prompt('請輸入此筆會議的刪除密碼（若建立時未設密碼可直接按確定）：');
+      if (pwd === null) return;
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        eventsData = eventsData.filter(e => e.id !== activeEvent.id);
+        alert('【展示模式】會議已刪除！');
+        closeModal('eventDetailModal');
+        renderCalendar();
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'deleteEvent', id: activeEvent.id, password: pwd })
+        });
+        const json = await res.json();
+        if (json.status === 'success') {
+          alert('會議已成功刪除！');
+          closeModal('eventDetailModal');
+          fetchLiveEvents();
+        } else {
+          alert('刪除失敗：' + (json.message || '密碼不正確'));
+        }
+      } catch (e) {
+        alert('連線失敗：' + e.toString());
+      }
+    }
+
+    // ── 提交新增會議 (衝突防擋檢查) ──────────────────────────
+    async function submitAddEvent(e) {
+      e.preventDefault();
+      const alertBox = document.getElementById('formConflictAlert');
+      const alertMsg = document.getElementById('formConflictMsg');
+      alertBox.classList.add('hidden');
+
+      const newEv = {
+        title: document.getElementById('formTitle').value.trim(),
+        date: document.getElementById('formDate').value,
+        startTime: document.getElementById('formStartTime').value,
+        endTime: document.getElementById('formEndTime').value,
+        location: document.getElementById('formLocation').value.trim(),
+        department: document.getElementById('formDepartment').value.trim(),
+        category: document.getElementById('formCategory').value,
+        description: document.getElementById('formDescription').value.trim(),
+        password: document.getElementById('formPassword').value.trim(),
+      };
+
+      if (newEv.startTime >= newEv.endTime) {
+        alert('結束時間必須晚於開始時間！');
+        return;
+      }
+
+      // 本地衝突檢查
+      const conflict = eventsData.find(ex => {
+        if (ex.date === newEv.date && ex.location.toLowerCase() === newEv.location.toLowerCase()) {
+          return (newEv.startTime < ex.endTime && newEv.endTime > ex.startTime);
+        }
+        return false;
+      });
+
+      if (conflict) {
+        alertBox.classList.remove('hidden');
+        alertMsg.innerText = `【場地衝突】${newEv.location} 在該時段已被「${conflict.title} (${conflict.startTime}~${conflict.endTime} ${conflict.department})」借用！`;
+        return;
+      }
+
+      // 送出至雲端或展示模式
+      const btn = document.getElementById('btnSubmitAdd');
+      btn.disabled = true;
+      btn.innerText = '處理中...';
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        setTimeout(() => {
+          newEv.id = 'demo-' + Date.now().toString().slice(-4);
+          eventsData.push(newEv);
+          btn.disabled = false;
+          btn.innerText = '確認預約';
+          closeModal('addEventModal');
+          document.getElementById('addEventForm').reset();
+          renderCalendar();
+          alert('會議預約成功！');
+        }, 500);
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'addEvent', ...newEv })
+        });
+        const json = await res.json();
+        btn.disabled = false;
+        btn.innerText = '確認預約';
+
+        if (json.status === 'success') {
+          closeModal('addEventModal');
+          document.getElementById('addEventForm').reset();
+          alert('會議已成功登記至 Google 雲端！');
+          fetchLiveEvents();
+        } else if (json.status === 'conflict') {
+          alertBox.classList.remove('hidden');
+          alertMsg.innerText = json.message;
+        } else {
+          alert('登記失敗：' + (json.message || '未知錯誤'));
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerText = '確認預約';
+        alert('連線失敗：' + err.toString());
+      }
+    }
+
+    // ========================================================
+    // ★★★ AI 公文速填互動 (核心亮點) ★★★
+    // ========================================================
+    let parsedAiResult = null;
+
+    function openAiExtractModal() {
+      openModal('aiExtractModal');
+    }
+
+    function fillAiSample(type) {
+      const input = document.getElementById('aiRawInput');
+      if (type === 1) {
+        input.value = `主旨：檢送本校「115學年度第1學期課程發展委員會第2次審查會議」開會通知單，請查照。\n說明：\n一、開會時間：115年9月25日（星期五）下午1時30分至3時0分。\n二、開會地點：二樓第一會議室。\n三、主持人：校長，主辦單位：教務處教學組。\n四、討論事項：審議各領域教學計畫及學習評量規範。\n五、請各領域召集人準時出席並攜帶教學進度表。`;
+      } else if (type === 2) {
+        input.value = `各處室主任好：\n本週五（9/22）上午第二節（09:15~10:00）請於三樓研討室召開主管會報，將針對校慶籌備進度及各組經費編列進行對焦，請總務處先彙整各處室需求，謝謝！`;
+      } else if (type === 3) {
+        input.value = `輔導室公告：下週三晚上7點到8點半在圖書館視聽教室舉辦「國三親師升學諮詢家長座談會」，由輔導室特教組主辦，備有茶水，請家長於門口簽到入場。`;
+      }
+    }
+
+    async function runAiExtract() {
+      const text = document.getElementById('aiRawInput').value.trim();
+      if (!text) {
+        alert('請先輸入或貼上公文/通知文字！');
+        return;
+      }
+
+      const btn = document.getElementById('btnRunAiExtract');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Gemini AI 正在深入解析語意...';
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        // 本地高擬真 AI 智能萃取模擬
+        setTimeout(() => {
+          parsedAiResult = simulateAiParsing(text);
+          renderAiResultCard(parsedAiResult);
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fa-solid fa-brain mr-2"></i>呼叫 Gemini AI 智慧分析';
+        }, 900);
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'aiExtractEvent', text: text })
+        });
+        const json = await res.json();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-brain mr-2"></i>呼叫 Gemini AI 智慧分析';
+
+        if (json.status === 'success' && json.data) {
+          parsedAiResult = json.data;
+          renderAiResultCard(parsedAiResult);
+        } else {
+          alert('AI 解析失敗：' + (json.message || '請確認 API 金鑰'));
+        }
+      } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-brain mr-2"></i>呼叫 Gemini AI 智慧分析';
+        alert('連線失敗：' + err.toString());
+      }
+    }
+
+    function simulateAiParsing(text) {
+      // 根據關鍵字智慧匹配
+      let title = '校內重要協調會議';
+      let date = formatDateOffset(3);
+      let startTime = '13:30';
+      let endTime = '15:00';
+      let location = '二樓第一會議室';
+      let department = '教務處';
+      let category = '處室會議';
+      let description = '經由 AI 自動萃取重點摘要並整理待辦事項。';
+
+      if (text.includes('課程發展委員會') || text.includes('課發會')) {
+        title = '115學年度第1學期課程發展委員會第2次審查會議';
+        category = '教學研討';
+        department = '教務處教學組';
+        startTime = '13:30';
+        endTime = '15:00';
+        location = '二樓第一會議室';
+        description = '審議各領域教學計畫及評量規範，請各領域召集人出席。';
+      } else if (text.includes('主管會報')) {
+        title = '行政處室主管會報 (校慶籌備)';
+        category = '處室會議';
+        department = '校長室/總務處';
+        startTime = '09:15';
+        endTime = '10:00';
+        location = '三樓研討室';
+        description = '校慶籌備進度確認與各處室經費編列對焦。';
+      } else if (text.includes('家長座談會') || text.includes('輔導室')) {
+        title = '國三親師升學諮詢家長座談會';
+        category = '重大活動';
+        department = '輔導室';
+        startTime = '19:00';
+        endTime = '20:30';
+        location = '圖書館視聽教室';
+        description = '升學多元入學管道說明與個別諮詢。';
+      }
+
+      return {
+        title, date, startTime, endTime, location, department, category, description,
+        confidence: 'high'
+      };
+    }
+
+    function renderAiResultCard(data) {
+      document.getElementById('aiResultCard').classList.remove('hidden');
+      document.getElementById('resTitle').innerText = data.title || '未識別';
+      document.getElementById('resDate').innerText = data.date || '未識別';
+      document.getElementById('resTime').innerText = `${data.startTime} ~ ${data.endTime}`;
+      document.getElementById('resLocation').innerText = data.location || '未識別';
+      document.getElementById('resDept').innerText = data.department || '未識別';
+      document.getElementById('resCat').innerText = data.category || '全校會議';
+      document.getElementById('resDesc').innerText = data.description || '無詳細備註';
+    }
+
+    function applyAiToForm() {
+      if (!parsedAiResult) return;
+      closeModal('aiExtractModal');
+
+      // 帶入新增表單
+      document.getElementById('formTitle').value = parsedAiResult.title || '';
+      document.getElementById('formDate').value = parsedAiResult.date || formatDateStr(new Date());
+      document.getElementById('formStartTime').value = parsedAiResult.startTime || '09:00';
+      document.getElementById('formEndTime').value = parsedAiResult.endTime || '10:00';
+      document.getElementById('formLocation').value = parsedAiResult.location || '';
+      document.getElementById('formDepartment').value = parsedAiResult.department || '';
+      document.getElementById('formCategory').value = parsedAiResult.category || '處室會議';
+      document.getElementById('formDescription').value = parsedAiResult.description || '';
+
+      openModal('addEventModal');
+    }
+
+    // ========================================================
+    // ★★★ AI 智慧對話助理邏輯 ★★★
+    // ========================================================
+    function openAiChatModal() { openModal('aiChatModal'); }
+
+    function sendPresetChat(text) {
+      document.getElementById('chatInput').value = text;
+      sendChatMessage();
+    }
+
+    async function sendChatMessage() {
+      const input = document.getElementById('chatInput');
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      appendChatMessage('user', msg);
+      input.value = '';
+
+      const typingId = appendChatTyping();
+
+      if (GAS_API_URL === 'DEMO_MODE') {
+        setTimeout(() => {
+          removeChatTyping(typingId);
+          const reply = simulateChatReply(msg);
+          appendChatMessage('bot', reply);
+        }, 700);
+        return;
+      }
+
+      try {
+        const res = await fetch(GAS_API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'aiChatSchedule', message: msg })
+        });
+        const json = await res.json();
+        removeChatTyping(typingId);
+
+        if (json.status === 'success' && json.data) {
+          appendChatMessage('bot', json.data.reply);
+        } else {
+          appendChatMessage('bot', '抱歉，暫時無法查詢：' + (json.message || '請確認連線'));
+        }
+      } catch (e) {
+        removeChatTyping(typingId);
+        appendChatMessage('bot', '系統連線異常，請稍後再試。');
+      }
+    }
+
+    function simulateChatReply(msg) {
+      if (msg.includes('第二會議室') || msg.includes('會議室')) {
+        return '已為您比對行事曆！下週二下午 13:30 至 16:00 之間，「二樓第一會議室」與「三樓研討室」皆為完全空檔，您可以安心安排會議。需要我直接幫您開啟登記表單嗎？';
+      }
+      if (msg.includes('教務處')) {
+        return '檢索結果：本週四上午教務處目前排定 09:10~11:00 於二樓第一會議室召開課發會。下午時段則無其他會議登記。';
+      }
+      if (msg.includes('課發會') || msg.includes('推薦時段')) {
+        return '這週五下午建議可安排在 13:30 ~ 15:30 於「活動中心」或「三樓研討室」，這兩個場地目前均無人預約，非常適合召開跨領域綜合研討。';
+      }
+      return `收到您的提問：「${msg}」。我已即時核對全校行事曆資料庫，目前該時段場地充裕，若需登記歡迎點擊「預約會議」或使用「AI 公文速填」快速排程！`;
+    }
+
+    function appendChatMessage(role, text) {
+      const container = document.getElementById('chatMessages');
+      const isUser = role === 'user';
+      const div = document.createElement('div');
+      div.className = `flex gap-2 ${isUser ? 'justify-end' : 'justify-start'}`;
+
+      if (isUser) {
+        div.innerHTML = `
+          <div class="bg-brand-600 text-white p-3 rounded-2xl rounded-tr-none shadow-xs max-w-[85%]">
+            <p>${escapeHtml(text)}</p>
+          </div>
+        `;
+      } else {
+        div.innerHTML = `
+          <div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-robot text-xs"></i>
+          </div>
+          <div class="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-200 shadow-xs max-w-[85%] text-slate-700 leading-relaxed">
+            <p>${text.replace(/\n/g, '<br>')}</p>
+          </div>
+        `;
+      }
+
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function appendChatTyping() {
+      const container = document.getElementById('chatMessages');
+      const id = 'typing-' + Date.now();
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'flex gap-2 items-center text-slate-400 text-xs';
+      div.innerHTML = `
+        <div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-robot text-xs"></i>
+        </div>
+        <div class="bg-white p-2.5 rounded-xl border border-slate-200 text-slate-400 flex items-center gap-1">
+          <i class="fa-solid fa-circle-notch fa-spin text-purple-600"></i> AI 正在思考中...
+        </div>
+      `;
+      container.appendChild(div);
+      container.scrollTop = container.scrollHeight;
+      return id;
+    }
+
+    function removeChatTyping(id) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+
+    function escapeHtml(str) {
+      return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    }
+
+    function showSetupModal() { openModal('setupModal'); }
+  </script>
+</body>
+</html>
