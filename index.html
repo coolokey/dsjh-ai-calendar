@@ -135,20 +135,10 @@
           <span class="hidden sm:inline">預約會議</span>
         </button>
 
-        <!-- 匯出功能選單 -->
-        <div class="relative group">
-          <button class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="匯出功能 (iCal / CSV)">
-            <i class="fa-solid fa-download text-base"></i>
-          </button>
-          <div class="absolute right-0 mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1.5 hidden group-hover:block z-50">
-            <button onclick="exportToIcs()" class="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-700 flex items-center gap-2">
-              <i class="fa-regular fa-calendar-plus text-purple-600"></i> 匯出 iCal (.ics)
-            </button>
-            <button onclick="exportToCsv()" class="w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 flex items-center gap-2">
-              <i class="fa-solid fa-file-csv text-blue-600"></i> 匯出 CSV 試算表
-            </button>
-          </div>
-        </div>
+        <!-- 匯出 CSV 按鈕 -->
+        <button onclick="exportToCsv()" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all cursor-pointer" title="匯出 CSV 試算表">
+          <i class="fa-solid fa-file-csv text-base"></i>
+        </button>
 
         <!-- 列印按鈕 -->
         <button onclick="triggerPrint()" class="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all" title="列印 / 匯出 PDF">
@@ -238,10 +228,10 @@
         </div>
       </div>
       <div class="bg-white p-3.5 rounded-xl border border-slate-200 flex items-start gap-2.5">
-        <i class="fa-solid fa-cloud-arrow-up text-blue-600 text-base mt-0.5"></i>
+        <i class="fa-solid fa-table text-blue-600 text-base mt-0.5"></i>
         <div>
-          <span class="font-bold text-slate-800 block">雙向日曆串流</span>
-          <span>支援 iCal (.ics) 行事曆訂閱，無縫匯入 Google / Outlook 行事曆。</span>
+          <span class="font-bold text-slate-800 block">多維排程與表格匯出</span>
+          <span>月/週/日/清單靈活切換，支援一鍵匯出 CSV 試算表與 A4 報表列印。</span>
         </div>
       </div>
     </div>
@@ -523,14 +513,6 @@
           <div id="detailDescBox" class="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-700 mt-2">
             <span class="font-bold text-slate-500 block mb-1">備註說明：</span>
             <p id="detailDesc">無</p>
-          </div>
-
-          <!-- 一鍵加入個人 Google Calendar 按鈕 -->
-          <div class="pt-2">
-            <button onclick="addToGoogleCalendar()" class="w-full py-2 px-3 bg-white hover:bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 flex items-center justify-center gap-2 transition shadow-2xs cursor-pointer">
-              <i class="fa-brands fa-google text-red-500"></i>
-              <span>加入我的個人 Google 日曆</span>
-            </button>
           </div>
         </div>
 
@@ -1229,19 +1211,6 @@
       openModal('addEventModal');
     }
 
-    // ── 加入個人 Google 日曆 ──────────────────────────────────
-    function addToGoogleCalendar() {
-      if (!activeEvent) return;
-      const d = activeEvent.date.replace(/-/g, '');
-      const s = activeEvent.startTime.replace(/:/g, '') + '00';
-      const e = (activeEvent.endTime || activeEvent.startTime).replace(/:/g, '') + '00';
-      const dates = `${d}T${s}/${d}T${e}`;
-      const title = encodeURIComponent(activeEvent.title);
-      const location = encodeURIComponent(activeEvent.location || '');
-      const details = encodeURIComponent(`[${activeEvent.department}] ${activeEvent.description || ''}\n(主辦單位：大溪國中智慧行事曆系統)`);
-      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${dates}&details=${details}&location=${location}`;
-      window.open(url, '_blank');
-    }
 
     // ── AI 生成 LINE 推播文案 ────────────────────────────────
     async function generateLineNotification() {
@@ -1754,53 +1723,8 @@
     }
 
     // ========================================================
-    // ★★★ 匯出功能 (iCal .ics 與 CSV) ★★★
+    // ★★★ 匯出功能 (CSV 試算表) ★★★
     // ========================================================
-    function exportToIcs() {
-      const list = filterEvents(eventsData);
-      if (list.length === 0) {
-        alert('目前無可匯出的會議資料。');
-        return;
-      }
-
-      let icsContent = [
-        'BEGIN:VCALENDAR',
-        'VERSION:2.0',
-        'PRODID:-//大溪國中//校園智慧行事曆 Agent//ZH',
-        'CALSCALE:GREGORIAN',
-        'METHOD:PUBLISH',
-        'X-WR-CALNAME:大溪國中校園智慧會議行事曆',
-        'X-WR-TIMEZONE:Asia/Taipei'
-      ];
-
-      const nowStamp = new Date().toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-
-      list.forEach(ev => {
-        if (!ev.date || !ev.startTime) return;
-        const d = ev.date.replace(/-/g, '');
-        const s = ev.startTime.replace(/:/g, '') + '00';
-        const e = (ev.endTime || ev.startTime).replace(/:/g, '') + '00';
-
-        icsContent.push('BEGIN:VEVENT');
-        icsContent.push(`UID:${ev.id || Math.random().toString(36).substring(2)}@dsjh.tyc.edu.tw`);
-        icsContent.push(`DTSTAMP:${nowStamp}`);
-        icsContent.push(`DTSTART;TZID=Asia/Taipei:${d}T${s}`);
-        icsContent.push(`DTEND;TZID=Asia/Taipei:${d}T${e}`);
-        icsContent.push(`SUMMARY:${ev.title || '校園會議'}`);
-        if (ev.location) icsContent.push(`LOCATION:${ev.location}`);
-        if (ev.department || ev.description) {
-          const desc = `[${ev.department || '校務'}] ${ev.description || ''}`.replace(/\n/g, '\\n');
-          icsContent.push(`DESCRIPTION:${desc}`);
-        }
-        icsContent.push('STATUS:CONFIRMED');
-        icsContent.push('END:VEVENT');
-      });
-
-      icsContent.push('END:VCALENDAR');
-      const blob = new Blob([icsContent.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
-      downloadBlob(blob, `dsjh_calendar_${formatDateStr(new Date())}.ics`);
-    }
-
     function exportToCsv() {
       const list = filterEvents(eventsData);
       if (list.length === 0) {

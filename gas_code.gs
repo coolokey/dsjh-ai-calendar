@@ -1,6 +1,6 @@
 // ====================================================================
 // 校園智慧行事曆 Agent (AI 會議協作與智慧排程系統) - Google Apps Script 後端
-// 版本：3.5 (全面支援 Google Gemini 2.0/1.5 生成式 AI、ICS 日曆訂閱與完整 CRUD)
+// 版本：3.5 (全面支援 Google Gemini 2.0/1.5 生成式 AI、完整 CRUD 與即時健康診斷)
 // 授權：MIT License | 適用學校：桃園市立大溪國民中學 / 全國各級中小學
 // ====================================================================
 
@@ -305,43 +305,6 @@ function deleteEvent(payload) {
   return { status: 'error', message: '找不到該筆會議紀錄。' };
 }
 
-// ── 產出標準 iCalendar (.ics) 訂閱串流 ────────────────────────────────
-function generateIcs(events) {
-  var lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//大溪國中//校園智慧行事曆 Agent//ZH',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'X-WR-CALNAME:大溪國中校園智慧會議行事曆',
-    'X-WR-TIMEZONE:Asia/Taipei'
-  ];
-
-  for (var i = 0; i < events.length; i++) {
-    var ev = events[i];
-    if (!ev.date || !ev.startTime) continue;
-    var d = String(ev.date).replace(/-/g, '');
-    var s = String(ev.startTime).replace(/:/g, '') + '00';
-    var e = String(ev.endTime || ev.startTime).replace(/:/g, '') + '00';
-
-    lines.push('BEGIN:VEVENT');
-    lines.push('UID:' + (ev.id || Utilities.getUuid()) + '@dsjh.tyc.edu.tw');
-    lines.push('DTSTAMP:' + Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'"));
-    lines.push('DTSTART;TZID=Asia/Taipei:' + d + 'T' + s);
-    lines.push('DTEND;TZID=Asia/Taipei:' + d + 'T' + e);
-    lines.push('SUMMARY:' + (ev.title || '校園會議'));
-    if (ev.location) lines.push('LOCATION:' + ev.location);
-    if (ev.department || ev.description) {
-      var desc = (ev.department ? '[' + ev.department + '] ' : '') + (ev.description || '');
-      lines.push('DESCRIPTION:' + desc.replace(/\n/g, '\\n'));
-    }
-    lines.push('STATUS:CONFIRMED');
-    lines.push('END:VEVENT');
-  }
-
-  lines.push('END:VCALENDAR');
-  return lines.join('\r\n');
-}
 
 // ====================================================================
 // ── GEMINI 生成式 AI 整合模組 ────────────────────────────────────────
@@ -525,10 +488,6 @@ function doGet(e) {
         e.parameter.excludeId
       );
       responseData = { status: 'success', data: c };
-    } else if (action === 'exportIcs') {
-      var icsStr = generateIcs(getEvents());
-      return ContentService.createTextOutput(icsStr)
-                           .setMimeType(ContentService.MimeType.TEXT);
     } else if (action === 'ping') {
       var hasApiKey = Boolean(getGeminiApiKey());
       var sheet = getSheet();
