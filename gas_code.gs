@@ -1,11 +1,12 @@
 // ====================================================================
 // 校園智慧行事曆 Agent (AI 會議協作與智慧排程系統) - Google Apps Script 後端
-// 版本：3.0 (整合 Google Gemini 生成式 AI 引擎)
+// 版本：3.5 (全面支援 Google Gemini 2.0/1.5 生成式 AI、ICS 日曆訂閱與完整 CRUD)
+// 授權：MIT License | 適用學校：桃園市立大溪國民中學 / 全國各級中小學
 // ====================================================================
 
 var SHEET_NAME = '會議資料';
 
-// ── 取得或建立 Google 試算表 ─────────────────────────────────────────
+// ── 取得或自動建立 Google 試算表資料庫 ─────────────────────────────────
 function getSheet() {
   var props = PropertiesService.getScriptProperties();
   var spreadsheetId = props.getProperty('SPREADSHEET_ID');
@@ -33,14 +34,14 @@ function getSheet() {
          .setFontColor('#ffffff');
     sheet.setFrozenRows(1);
     sheet.setColumnWidths(1, 11, 120);
-    sheet.setColumnWidth(2, 200);
+    sheet.setColumnWidth(2, 220);
     sheet.setColumnWidth(6, 160);
-    sheet.setColumnWidth(9, 250);
+    sheet.setColumnWidth(9, 260);
   }
   return sheet;
 }
 
-// ── 日期與時間格式化工具 ─────────────────────────────────────────────
+// ── 日期與時間正規化工具 ─────────────────────────────────────────────
 function formatDate(val) {
   if (!val) return '';
   if (val instanceof Date) {
@@ -74,7 +75,7 @@ function formatTime(val) {
   return str;
 }
 
-// ── SHA-256 密碼雜湊 ────────────────────────────────────────────────
+// ── SHA-256 密碼雜湊防誤刪機制 ────────────────────────────────────────
 function hashPassword(password) {
   if (!password) return '';
   var rawHash = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, password, Utilities.Charset.UTF_8);
@@ -89,7 +90,7 @@ function hashPassword(password) {
   return txtHash;
 }
 
-// ── 檢查地點與時段衝突 ───────────────────────────────────────────────
+// ── 檢查地點與時段衝突 (支援排除指定 ID) ─────────────────────────────
 function checkConflict(date, startTime, endTime, location, excludeId) {
   var sheet = getSheet();
   var data = sheet.getDataRange().getValues();
@@ -98,7 +99,8 @@ function checkConflict(date, startTime, endTime, location, excludeId) {
   var normDate = formatDate(date);
   var normStart = formatTime(startTime);
   var normEnd = formatTime(endTime);
-  var normLoc = String(location).trim().toLowerCase();
+  var normLoc = String(location || '').trim().toLowerCase();
+  if (!normLoc) return null;
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -108,11 +110,10 @@ function checkConflict(date, startTime, endTime, location, excludeId) {
     var rDate = formatDate(row[2]);
     var rStart = formatTime(row[3]);
     var rEnd = formatTime(row[4]);
-    var rLoc = String(row[5]).trim().toLowerCase();
+    var rLoc = String(row[5] || '').trim().toLowerCase();
 
-    // 同日期、同地點
+    // 同日期、同地點且時段重疊：startA < endB && endA > startB
     if (rDate === normDate && rLoc === normLoc && normLoc !== '') {
-      // 判斷時段重疊：startA < endB && endA > startB
       if (normStart < rEnd && normEnd > rStart) {
         return {
           conflict: true,
@@ -132,7 +133,7 @@ function checkConflict(date, startTime, endTime, location, excludeId) {
   return null;
 }
 
-// ── 取得所有會議事件 ────────────────────────────────────────────────
+// ── 取得所有會議事件清單 ─────────────────────────────────────────────
 function getEvents() {
   var sheet = getSheet();
   var data = sheet.getDataRange().getValues();
@@ -148,10 +149,10 @@ function getEvents() {
       date: formatDate(row[2]),
       startTime: formatTime(row[3]),
       endTime: formatTime(row[4]),
-      location: String(row[5]),
-      department: String(row[6]),
-      category: String(row[7]),
-      description: String(row[8]),
+      location: String(row[5] || ''),
+      department: String(row[6] || ''),
+      category: String(row[7] || '全校會議'),
+      description: String(row[8] || ''),
       createdAt: row[10] ? formatDate(row[10]) : ''
     });
   }
@@ -173,8 +174,6 @@ function addEvent(payload) {
   if (!title || !date || !startTime || !endTime) {
     return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
   }
-
-  // 時段有效性驗證
   if (startTime >= endTime) {
     return { status: 'error', message: '開始時間必須早於結束時間。' };
   }
@@ -215,6 +214,71 @@ function addEvent(payload) {
   return { status: 'success', message: '會議已成功登記！', id: id };
 }
 
+// ── 更新/修改會議事件 (支援密碼驗證) ──────────────────────────────────
+function updateEvent(payload) {
+  var id = String(payload.id || '').trim();
+  var password = String(payload.password || '').trim();
+  if (!id) return { status: 'error', message: '請指定欲修改的會議 ID。' };
+
+  var title = String(payload.title || '').trim();
+  var date = formatDate(payload.date);
+  var startTime = formatTime(payload.startTime);
+  var endTime = formatTime(payload.endTime);
+  var location = String(payload.location || '').trim();
+  var department = String(payload.department || '').trim();
+  var category = String(payload.category || '全校會議').trim();
+  var description = String(payload.description || '').trim();
+
+  if (!title || !date || !startTime || !endTime) {
+    return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
+  }
+  if (startTime >= endTime) {
+    return { status: 'error', message: '開始時間必須早於結束時間。' };
+  }
+
+  // 衝突檢查 (排除本筆 ID)
+  var conflict = checkConflict(date, startTime, endTime, location, id);
+  if (conflict) {
+    return {
+      status: 'conflict',
+      message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
+               conflict.conflictingEvent.title + ' (' +
+               conflict.conflictingEvent.startTime + '~' +
+               conflict.conflictingEvent.endTime + ' ' +
+               conflict.conflictingEvent.department + ')',
+      conflictDetails: conflict.conflictingEvent
+    };
+  }
+
+  var sheet = getSheet();
+  var data = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === id) {
+      var storedHash = String(data[i][9]);
+      var inputHash = hashPassword(password);
+
+      // 若原設定密碼則需檢核
+      if (storedHash && storedHash !== inputHash) {
+        return { status: 'error', message: '驗證密碼不正確，無法修改此筆會議。' };
+      }
+
+      var rowIdx = i + 1;
+      sheet.getRange(rowIdx, 2).setValue(title);
+      sheet.getRange(rowIdx, 3).setValue("'" + date);
+      sheet.getRange(rowIdx, 4).setValue("'" + startTime);
+      sheet.getRange(rowIdx, 5).setValue("'" + endTime);
+      sheet.getRange(rowIdx, 6).setValue(location);
+      sheet.getRange(rowIdx, 7).setValue(department);
+      sheet.getRange(rowIdx, 8).setValue(category);
+      sheet.getRange(rowIdx, 9).setValue(description);
+
+      return { status: 'success', message: '會議已成功更新！' };
+    }
+  }
+  return { status: 'error', message: '找不到該筆會議紀錄。' };
+}
+
 // ── 刪除會議事件 (需密碼驗證) ──────────────────────────────────────
 function deleteEvent(payload) {
   var id = String(payload.id || '').trim();
@@ -230,7 +294,6 @@ function deleteEvent(payload) {
       var storedHash = String(data[i][9]);
       var inputHash = hashPassword(password);
 
-      // 若原先有設密碼則需驗證，若沒設密碼則直接允許
       if (storedHash && storedHash !== inputHash) {
         return { status: 'error', message: '刪除密碼不正確，無法刪除此筆會議。' };
       }
@@ -240,6 +303,44 @@ function deleteEvent(payload) {
     }
   }
   return { status: 'error', message: '找不到該筆會議紀錄。' };
+}
+
+// ── 產出標準 iCalendar (.ics) 訂閱串流 ────────────────────────────────
+function generateIcs(events) {
+  var lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//大溪國中//校園智慧行事曆 Agent//ZH',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:大溪國中校園智慧會議行事曆',
+    'X-WR-TIMEZONE:Asia/Taipei'
+  ];
+
+  for (var i = 0; i < events.length; i++) {
+    var ev = events[i];
+    if (!ev.date || !ev.startTime) continue;
+    var d = String(ev.date).replace(/-/g, '');
+    var s = String(ev.startTime).replace(/:/g, '') + '00';
+    var e = String(ev.endTime || ev.startTime).replace(/:/g, '') + '00';
+
+    lines.push('BEGIN:VEVENT');
+    lines.push('UID:' + (ev.id || Utilities.getUuid()) + '@dsjh.tyc.edu.tw');
+    lines.push('DTSTAMP:' + Utilities.formatDate(new Date(), 'UTC', "yyyyMMdd'T'HHmmss'Z'"));
+    lines.push('DTSTART;TZID=Asia/Taipei:' + d + 'T' + s);
+    lines.push('DTEND;TZID=Asia/Taipei:' + d + 'T' + e);
+    lines.push('SUMMARY:' + (ev.title || '校園會議'));
+    if (ev.location) lines.push('LOCATION:' + ev.location);
+    if (ev.department || ev.description) {
+      var desc = (ev.department ? '[' + ev.department + '] ' : '') + (ev.description || '');
+      lines.push('DESCRIPTION:' + desc.replace(/\n/g, '\\n'));
+    }
+    lines.push('STATUS:CONFIRMED');
+    lines.push('END:VEVENT');
+  }
+
+  lines.push('END:VCALENDAR');
+  return lines.join('\r\n');
 }
 
 // ====================================================================
@@ -257,8 +358,9 @@ function callGeminiAPI(prompt, systemInstruction) {
     throw new Error('未設定 GEMINI_API_KEY。請至 Apps Script「專案設定」→「指令碼屬性」新增 GEMINI_API_KEY。');
   }
 
-  // 使用最新且極速的 gemini-1.5-flash 或 gemini-2.5-flash
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' + apiKey;
+  // 支援的模型清單（優先使用 1.5-flash 或 2.0-flash）
+  var models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  var preferredModel = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || models[0];
 
   var payload = {
     contents: [
@@ -268,7 +370,7 @@ function callGeminiAPI(prompt, systemInstruction) {
     ],
     generationConfig: {
       temperature: 0.2,
-      responseMimeType: "application/json"
+      responseMimeType: 'application/json'
     }
   };
 
@@ -285,20 +387,34 @@ function callGeminiAPI(prompt, systemInstruction) {
     muteHttpExceptions: true
   };
 
-  var response = UrlFetchApp.fetch(url, options);
-  var code = response.getResponseCode();
-  var resText = response.getContentText();
-
-  if (code !== 200) {
-    var errObj;
-    try { errObj = JSON.parse(resText); } catch(e) {}
-    var errMsg = (errObj && errObj.error && errObj.error.message) ? errObj.error.message : resText;
-    throw new Error('Gemini API 呼叫失敗 (' + code + '): ' + errMsg);
+  var lastError = '';
+  // 嘗試指定或備援模型呼叫
+  var testModels = [preferredModel];
+  for (var m = 0; m < models.length; m++) {
+    if (models[m] !== preferredModel) testModels.push(models[m]);
   }
 
-  var result = JSON.parse(resText);
-  var textOut = result.candidates[0].content.parts[0].text;
-  return textOut;
+  for (var k = 0; k < testModels.length; k++) {
+    var curModel = testModels[k];
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + curModel + ':generateContent?key=' + apiKey;
+    var response = UrlFetchApp.fetch(url, options);
+    var code = response.getResponseCode();
+    var resText = response.getContentText();
+
+    if (code === 200) {
+      var result = JSON.parse(resText);
+      if (result.candidates && result.candidates[0] && result.candidates[0].content) {
+        var rawText = result.candidates[0].content.parts[0].text;
+        // 清除可能的 markdown 包裹
+        var cleanText = rawText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
+        return cleanText;
+      }
+    } else {
+      lastError = 'HTTP ' + code + ': ' + resText;
+    }
+  }
+
+  throw new Error('Gemini API 呼叫失敗：' + lastError);
 }
 
 // ── AI 功能 1：公文 / 通知文字一鍵智能解析為會議排程 ────────────────
@@ -322,7 +438,7 @@ function aiExtractEvent(text) {
     '  "date": "YYYY-MM-DD",\n' +
     '  "startTime": "HH:mm",\n' +
     '  "endTime": "HH:mm",\n' +
-    '  "location": "會議地點（如：二樓研討室、圖書館、第一會議室等）",\n' +
+    '  "location": "會議地點（如：二樓第一會議室、三樓研討室、圖書館視聽教室、活動中心等）",\n' +
     '  "department": "主辦處室或召集人（如：教務處、學務處、輔導室、總務處等）",\n' +
     '  "category": "分類（可選：全校會議、處室會議、教學研討、重大活動、其他）",\n' +
     '  "description": "摘要重點、待辦事項或需攜帶資料",\n' +
@@ -344,7 +460,7 @@ function aiGenerateAgenda(meetingData) {
   var systemPrompt = 
     "你是一位專業的學校行政秘書。根據所提供的會議詳細資料，產出兩份實用文件：\n" +
     "1. Line / 校園推播通知稿（親切、重點清晰、含時間地點出席人員、emoji適度點綴）\n" +
-    "2. 標準校內會議議程草稿（含主席致詞、業務報告、提案討論、臨時動向等標準結構）\n" +
+    "2. 標準校內會議議程草稿（含主席致詞、業務報告、提案討論、臨時動議等標準結構）\n" +
     "請以 JSON 物件輸出：\n" +
     "{\n" +
     '  "pushMessage": "完整推播訊息文字",\n' +
@@ -409,11 +525,23 @@ function doGet(e) {
         e.parameter.excludeId
       );
       responseData = { status: 'success', data: c };
+    } else if (action === 'exportIcs') {
+      var icsStr = generateIcs(getEvents());
+      return ContentService.createTextOutput(icsStr)
+                           .setMimeType(ContentService.MimeType.TEXT);
     } else if (action === 'ping') {
       var hasApiKey = Boolean(getGeminiApiKey());
-      responseData = { status: 'success', message: '服務正常運行', hasGeminiApiKey: hasApiKey };
+      var sheet = getSheet();
+      var ssUrl = sheet.getParent() ? sheet.getParent().getUrl() : '';
+      responseData = {
+        status: 'success',
+        message: '校園智慧行事曆後端服務運行正常',
+        hasGeminiApiKey: hasApiKey,
+        spreadsheetUrl: ssUrl,
+        eventCount: Math.max(0, sheet.getLastRow() - 1)
+      };
     } else {
-      responseData = { status: 'error', message: '未知 action 請求' };
+      responseData = { status: 'error', message: '未知 action 請求: ' + action };
     }
   } catch (err) {
     responseData = { status: 'error', message: err.toString() };
@@ -433,6 +561,8 @@ function doPost(e) {
 
     if (action === 'addEvent') {
       responseData = addEvent(payload);
+    } else if (action === 'updateEvent') {
+      responseData = updateEvent(payload);
     } else if (action === 'deleteEvent') {
       responseData = deleteEvent(payload);
     } else if (action === 'aiExtractEvent') {
