@@ -14,7 +14,7 @@
 * 🌐 **GitHub Pages 即時體驗網址**：[https://coolokey.github.io/dsjh-ai-calendar/](https://coolokey.github.io/dsjh-ai-calendar/)
 * 📦 **GitHub 公開原始碼儲存庫**：[https://github.com/coolokey/dsjh-ai-calendar](https://github.com/coolokey/dsjh-ai-calendar)
 
-> 💡 **免設定開箱即用**：直接點擊上方體驗網址，系統預設啟動高擬真「AI 互動展示模式」，內建真實校園會議資料，可無限制體驗 AI 公文速填、智慧秘書對話、場地衝突防擋與議程文案產出！
+> 💡 **免設定開箱即用**：前端已預設連結已部署之 Google Apps Script 雲端後端，同時內建「AI 展示模式」備援機制，免手動設定即可直接連線 Google Sheets 資料庫與體驗 AI 會議協作功能！
 
 ---
 

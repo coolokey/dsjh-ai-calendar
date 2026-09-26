@@ -578,7 +578,7 @@
         <div class="space-y-2">
           <input type="url" id="settingGasUrl" placeholder="https://script.google.com/macros/s/AKfycb.../exec" class="w-full p-2.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
           <p class="text-[11px] text-slate-500">
-            ※ 留空或輸入 <code>DEMO_MODE</code> 將使用本地 AI 模擬展示環境。設定後將儲存於瀏覽器，無需重新發布網頁！
+            ※ 系統已預載已部署之 GAS 雲端後端。若留空將自動使用預設網址；若輸入 <code>DEMO_MODE</code> 將使用本地 AI 模擬展示環境。
           </p>
         </div>
 
@@ -591,8 +591,11 @@
             <button type="button" onclick="testConnectionPing()" id="btnTestPing" class="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold flex items-center gap-1.5 transition cursor-pointer">
               <i class="fa-solid fa-bolt"></i> 測試連線 (Ping)
             </button>
+            <button type="button" onclick="restoreDefaultGasUrl()" class="px-3 py-1.5 text-brand-600 hover:text-brand-800 text-xs font-medium cursor-pointer">
+              還原官方預設
+            </button>
             <button type="button" onclick="resetToDemoMode()" class="px-3 py-1.5 text-slate-500 hover:text-slate-800 text-xs font-medium cursor-pointer">
-              還原為展示模式
+              切換展示模式
             </button>
           </div>
           <button type="button" onclick="saveGasSettings()" class="px-4 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition shadow-xs cursor-pointer">
@@ -632,17 +635,20 @@
   <script>
     // ========================================================
     // ★★★ 雲端與連線設定管理 ★★★
-    // ========================================================
-    // 預設為展示模式，亦支援在網頁介面動態儲存至 localStorage
+    // 預設官方已部署之 GAS 雲端後端網址
+    const DEFAULT_GAS_URL = 'https://script.google.com/macros/s/AKfycbx8IqH-d-ptmGm0Sh80xKR1UIDmDr2It6lWqGtLAtT3bM78d7REPRuU5056pRQjiG_kvQ/exec';
     const STORAGE_KEY_GAS_URL = 'DSJH_GAS_API_URL';
     const STORAGE_KEY_LOCAL_EVENTS = 'DSJH_LOCAL_MOCK_EVENTS';
 
     function getActiveGasUrl() {
       const saved = localStorage.getItem(STORAGE_KEY_GAS_URL);
-      if (saved && saved.trim() !== '' && saved.trim() !== 'DEMO_MODE') {
+      if (saved === 'DEMO_MODE') {
+        return 'DEMO_MODE';
+      }
+      if (saved && saved.trim() !== '') {
         return saved.trim();
       }
-      return 'DEMO_MODE';
+      return DEFAULT_GAS_URL;
     }
 
     // ── 核心狀態變數 ──────────────────────────────────────────
@@ -1772,8 +1778,8 @@
     // ========================================================
     function openSetupModal() {
       const input = document.getElementById('settingGasUrl');
-      const current = localStorage.getItem(STORAGE_KEY_GAS_URL) || '';
-      input.value = current;
+      const current = localStorage.getItem(STORAGE_KEY_GAS_URL);
+      input.value = current !== null ? current : DEFAULT_GAS_URL;
       document.getElementById('pingResultBox').classList.add('hidden');
       openModal('setupModal');
     }
@@ -1782,12 +1788,15 @@
       const input = document.getElementById('settingGasUrl');
       const val = input.value.trim();
 
-      if (!val || val === 'DEMO_MODE') {
+      if (!val || val === DEFAULT_GAS_URL) {
         localStorage.removeItem(STORAGE_KEY_GAS_URL);
-        alert('已設定為「展示模式 (Demo)」！');
+        alert('已設定為預設官方 Google Apps Script 後端！');
+      } else if (val === 'DEMO_MODE') {
+        localStorage.setItem(STORAGE_KEY_GAS_URL, 'DEMO_MODE');
+        alert('已切換為「展示模式 (Demo)」！');
       } else {
         localStorage.setItem(STORAGE_KEY_GAS_URL, val);
-        alert('已成功儲存 Google Apps Script 雲端連線網址！');
+        alert('已成功儲存自訂 Google Apps Script 雲端連線網址！');
       }
 
       closeModal('setupModal');
@@ -1795,12 +1804,22 @@
       initEventsData();
     }
 
-    function resetToDemoMode() {
+    function restoreDefaultGasUrl() {
       localStorage.removeItem(STORAGE_KEY_GAS_URL);
-      document.getElementById('settingGasUrl').value = '';
+      document.getElementById('settingGasUrl').value = DEFAULT_GAS_URL;
+      const pingBox = document.getElementById('pingResultBox');
+      pingBox.className = 'p-3 rounded-lg text-xs bg-emerald-50 text-emerald-800 border-emerald-200 block';
+      pingBox.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> 已還原為預設官方後端網址';
+      updateConnectionBadge();
+      initEventsData();
+    }
+
+    function resetToDemoMode() {
+      localStorage.setItem(STORAGE_KEY_GAS_URL, 'DEMO_MODE');
+      document.getElementById('settingGasUrl').value = 'DEMO_MODE';
       const pingBox = document.getElementById('pingResultBox');
       pingBox.className = 'p-3 rounded-lg text-xs bg-amber-50 text-amber-800 border-amber-200 block';
-      pingBox.innerHTML = '<i class="fa-solid fa-circle-check text-amber-600 mr-1"></i> 已還原為展示模式';
+      pingBox.innerHTML = '<i class="fa-solid fa-circle-check text-amber-600 mr-1"></i> 已切換為展示模式';
       updateConnectionBadge();
       loadMockEvents();
     }
