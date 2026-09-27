@@ -420,32 +420,37 @@
           </div>
         </div>
 
-        <!-- 地點與主辦處室 -->
+        <!-- 地點與主辦處室 (下拉式選單 + 其他動態自訂) -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">會議地點 <span class="text-red-500">*</span></label>
-            <input type="text" id="formLocation" required list="locationSuggestions" placeholder="例：二樓第一會議室" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
-            <datalist id="locationSuggestions">
-              <option value="二樓第一會議室"></option>
-              <option value="三樓研討室"></option>
-              <option value="圖書館視聽教室"></option>
-              <option value="行政大樓校史室"></option>
-              <option value="活動中心"></option>
-              <option value="電腦教室 (一)"></option>
-            </datalist>
+            <select id="formLocation" required onchange="handleLocationChange()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:bg-white">
+              <option value="">請選擇地點...</option>
+              <option value="學生活動中心">學生活動中心</option>
+              <option value="行政大樓3F教師研習中心">行政大樓3F教師研習中心</option>
+              <option value="科技館1F視廳教室">科技館1F視廳教室</option>
+              <option value="科技館2F科技智慧教室">科技館2F科技智慧教室</option>
+              <option value="科技館2F科技創作教室">科技館2F科技創作教室</option>
+              <option value="圖書館">圖書館</option>
+              <option value="校史室">校史室</option>
+              <option value="新大樓1F視聽中心">新大樓1F視聽中心</option>
+              <option value="其他">其他 (自行輸入)</option>
+            </select>
+            <input type="text" id="formLocationOther" placeholder="請輸入地點名稱" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-700 mb-1">主辦單位/處室 <span class="text-red-500">*</span></label>
-            <input type="text" id="formDepartment" required list="deptSuggestions" placeholder="例：教務處教學組" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
-            <datalist id="deptSuggestions">
-              <option value="校長室"></option>
-              <option value="教務處"></option>
-              <option value="學務處"></option>
-              <option value="總務處"></option>
-              <option value="輔導室"></option>
-              <option value="人事室"></option>
-              <option value="會計室"></option>
-            </datalist>
+            <select id="formDepartment" required onchange="handleDepartmentChange()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500 focus:bg-white">
+              <option value="">請選擇單位...</option>
+              <option value="教務處">教務處</option>
+              <option value="學務處">學務處</option>
+              <option value="總務處">總務處</option>
+              <option value="輔導室">輔導室</option>
+              <option value="人事室">人事室</option>
+              <option value="科技中心">科技中心</option>
+              <option value="其他">其他 (自行輸入)</option>
+            </select>
+            <input type="text" id="formDepartmentOther" placeholder="請輸入單位名稱 (如：教務處教學組)" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-brand-500">
           </div>
         </div>
 
@@ -666,8 +671,8 @@
           date: formatDateStr(new Date()),
           startTime: '13:30',
           endTime: '15:30',
-          location: '活動中心',
-          department: '校長室/教務處',
+          location: '學生活動中心',
+          department: '教務處',
           category: '全校會議',
           description: '報告學期校務發展計畫，請各組備妥10分鐘簡報與各處室同仁準時出席。'
         },
@@ -677,8 +682,8 @@
           date: formatDateOffset(2),
           startTime: '09:10',
           endTime: '11:00',
-          location: '二樓第一會議室',
-          department: '教務處教學組',
+          location: '行政大樓3F教師研習中心',
+          department: '教務處',
           category: '教學研討',
           description: '審查各年級彈性學習課程規劃表與雙語教學進度。'
         },
@@ -688,7 +693,7 @@
           date: formatDateOffset(4),
           startTime: '14:00',
           endTime: '15:30',
-          location: '三樓研討室',
+          location: '科技館1F視廳教室',
           department: '輔導室',
           category: '處室會議',
           description: '討論親師座談會當日動線引導、家長簽到與特教輔導諮詢專線安排。'
@@ -699,7 +704,7 @@
           date: formatDateOffset(7),
           startTime: '10:10',
           endTime: '11:00',
-          location: '二樓第一會議室',
+          location: '新大樓1F視聽中心',
           department: '總務處',
           category: '處室會議',
           description: '確認全校疏散路線演練時間及避難包檢查要點。'
@@ -1170,10 +1175,105 @@
       openModal('addEventModal');
     }
 
+    // ── 地點與處室下拉選單與「其他」動態控制 ─────────────────────────
+    function handleLocationChange() {
+      const sel = document.getElementById('formLocation');
+      const other = document.getElementById('formLocationOther');
+      if (sel.value === '其他') {
+        other.classList.remove('hidden');
+        other.required = true;
+        other.focus();
+      } else {
+        other.classList.add('hidden');
+        other.required = false;
+        other.value = '';
+      }
+    }
+
+    function handleDepartmentChange() {
+      const sel = document.getElementById('formDepartment');
+      const other = document.getElementById('formDepartmentOther');
+      if (sel.value === '其他') {
+        other.classList.remove('hidden');
+        other.required = true;
+        other.focus();
+      } else {
+        other.classList.add('hidden');
+        other.required = false;
+        other.value = '';
+      }
+    }
+
+    function getFormLocation() {
+      const sel = document.getElementById('formLocation');
+      if (sel.value === '其他') {
+        return document.getElementById('formLocationOther').value.trim();
+      }
+      return sel.value.trim();
+    }
+
+    function getFormDepartment() {
+      const sel = document.getElementById('formDepartment');
+      if (sel.value === '其他') {
+        return document.getElementById('formDepartmentOther').value.trim();
+      }
+      return sel.value.trim();
+    }
+
+    function setFormLocation(loc) {
+      const sel = document.getElementById('formLocation');
+      const other = document.getElementById('formLocationOther');
+      if (!loc) {
+        sel.value = '';
+        other.value = '';
+        other.classList.add('hidden');
+        other.required = false;
+        return;
+      }
+      const opts = Array.from(sel.options).map(o => o.value);
+      if (opts.includes(loc)) {
+        sel.value = loc;
+        other.value = '';
+        other.classList.add('hidden');
+        other.required = false;
+      } else {
+        sel.value = '其他';
+        other.value = loc;
+        other.classList.remove('hidden');
+        other.required = true;
+      }
+    }
+
+    function setFormDepartment(dept) {
+      const sel = document.getElementById('formDepartment');
+      const other = document.getElementById('formDepartmentOther');
+      if (!dept) {
+        sel.value = '';
+        other.value = '';
+        other.classList.add('hidden');
+        other.required = false;
+        return;
+      }
+      const opts = Array.from(sel.options).map(o => o.value);
+      if (opts.includes(dept)) {
+        sel.value = dept;
+        other.value = '';
+        other.classList.add('hidden');
+        other.required = false;
+      } else {
+        sel.value = '其他';
+        other.value = dept;
+        other.classList.remove('hidden');
+        other.required = true;
+      }
+    }
+
     function resetAddForm() {
       document.getElementById('addEventForm').reset();
       document.getElementById('formEditId').value = '';
       document.getElementById('btnSubmitAdd').innerText = '確認預約';
+      handleLocationChange();
+      handleDepartmentChange();
     }
 
     // ── 會議詳情檢視與 AI 工具呼叫 ────────────────────────────
@@ -1206,8 +1306,8 @@
       document.getElementById('formDate').value = activeEvent.date;
       document.getElementById('formStartTime').value = activeEvent.startTime;
       document.getElementById('formEndTime').value = activeEvent.endTime;
-      document.getElementById('formLocation').value = activeEvent.location;
-      document.getElementById('formDepartment').value = activeEvent.department;
+      setFormLocation(activeEvent.location);
+      setFormDepartment(activeEvent.department);
       document.getElementById('formCategory').value = activeEvent.category || '全校會議';
       document.getElementById('formDescription').value = activeEvent.description || '';
       document.getElementById('formPassword').value = '';
@@ -1344,14 +1444,27 @@
       const editId = document.getElementById('formEditId').value.trim();
       const isEditing = Boolean(editId);
 
+      const loc = getFormLocation();
+      const dep = getFormDepartment();
+      if (!loc) {
+        alert('請選擇或填寫會議地點！');
+        document.getElementById('formLocation').focus();
+        return;
+      }
+      if (!dep) {
+        alert('請選擇或填寫主辦單位/處室！');
+        document.getElementById('formDepartment').focus();
+        return;
+      }
+
       const payload = {
         id: editId || undefined,
         title: document.getElementById('formTitle').value.trim(),
         date: document.getElementById('formDate').value,
         startTime: document.getElementById('formStartTime').value,
         endTime: document.getElementById('formEndTime').value,
-        location: document.getElementById('formLocation').value.trim(),
-        department: document.getElementById('formDepartment').value.trim(),
+        location: loc,
+        department: dep,
         category: document.getElementById('formCategory').value,
         description: document.getElementById('formDescription').value.trim(),
         password: document.getElementById('formPassword').value.trim(),
@@ -1446,11 +1559,11 @@
     function fillAiSample(type) {
       const input = document.getElementById('aiRawInput');
       if (type === 1) {
-        input.value = `主旨：檢送本校「115學年度第1學期課程發展委員會第2次審查會議」開會通知單，請查照。\n說明：\n一、開會時間：115年9月25日（星期五）下午1時30分至3時0分。\n二、開會地點：二樓第一會議室。\n三、主持人：校長，主辦單位：教務處教學組。\n四、討論事項：審議各領域教學計畫及學習評量規範。\n五、請各領域召集人準時出席並攜帶教學進度表。`;
+        input.value = `主旨：檢送本校「115學年度第1學期課程發展委員會第2次審查會議」開會通知單，請查照。\n說明：\n一、開會時間：115年9月25日（星期五）下午1時30分至3時0分。\n二、開會地點：行政大樓3F教師研習中心。\n三、主持人：校長，主辦單位：教務處教學組。\n四、討論事項：審議各領域教學計畫及學習評量規範。\n五、請各領域召集人準時出席並攜帶教學進度表。`;
       } else if (type === 2) {
-        input.value = `各處室主任好：\n本週五（9/22）上午第二節（09:15~10:00）請於三樓研討室召開主管會報，將針對校慶籌備進度及各組經費編列進行對焦，請總務處先彙整各處室需求，謝謝！`;
+        input.value = `各處室主任好：\n本週五（9/22）上午第二節（09:15~10:00）請於新大樓1F視聽中心召開主管會報，將針對校慶籌備進度及各組經費編列進行對焦，請總務處先彙整各處室需求，謝謝！`;
       } else if (type === 3) {
-        input.value = `輔導室公告：下週三晚上7點到8點半在圖書館視聽教室舉辦「國三親師升學諮詢家長座談會」，由輔導室特教組主辦，備有茶水，請家長於門口簽到入場。`;
+        input.value = `輔導室公告：下週三晚上7點到8點半在科技館1F視廳教室舉辦「國三親師升學諮詢家長座談會」，由輔導室特教組主辦，備有茶水，請家長於門口簽到入場。`;
       }
     }
 
@@ -1505,7 +1618,7 @@
       let date = formatDateOffset(3);
       let startTime = '13:30';
       let endTime = '14:30';
-      let location = '二樓第一會議室';
+      let location = '行政大樓3F教師研習中心';
       let department = '教務處';
       let category = '處室會議';
       let description = '經由 Gemini AI 自動辨識非結構化文本並萃取關鍵要素。';
@@ -1554,14 +1667,26 @@
         startTime = '09:15'; endTime = '10:00';
       }
 
-      // 4. 地點擷取
-      const locCandidates = ['二樓第一會議室', '第一會議室', '第二會議室', '三樓研討室', '研討室', '圖書館視聽教室', '視聽教室', '校史室', '活動中心', '行政大樓'];
+      // 4. 地點擷取 (配合大溪國中專屬會議地點)
+      const locCandidates = [
+        '學生活動中心', '活動中心',
+        '行政大樓3F教師研習中心', '教師研習中心', '研習中心',
+        '科技館1F視廳教室', '科技館2F科技智慧教室', '科技館2F科技創作教室', '科技館',
+        '圖書館', '校史室', '新大樓1F視聽中心', '視聽中心'
+      ];
       for (const loc of locCandidates) {
-        if (text.includes(loc)) { location = loc; break; }
+        if (text.includes(loc)) {
+          if (loc === '活動中心') location = '學生活動中心';
+          else if (loc === '教師研習中心' || loc === '研習中心') location = '行政大樓3F教師研習中心';
+          else if (loc === '視聽中心') location = '新大樓1F視聽中心';
+          else if (loc === '科技館') location = '科技館1F視廳教室';
+          else location = loc;
+          break;
+        }
       }
 
-      // 5. 處室擷取
-      const deptCandidates = ['教務處教學組', '教務處', '學務處', '總務處', '輔導室特教組', '輔導室', '校長室', '人事室', '會計室'];
+      // 5. 處室擷取 (配合大溪國中行政處室清單)
+      const deptCandidates = ['教務處教學組', '教務處', '學務處', '總務處', '輔導室特教組', '輔導室', '校長室', '人事室', '科技中心', '會計室'];
       for (const dep of deptCandidates) {
         if (text.includes(dep)) { department = dep; break; }
       }
@@ -1602,8 +1727,8 @@
       document.getElementById('formDate').value = parsedAiResult.date || formatDateStr(new Date());
       document.getElementById('formStartTime').value = parsedAiResult.startTime || '09:00';
       document.getElementById('formEndTime').value = parsedAiResult.endTime || '10:00';
-      document.getElementById('formLocation').value = parsedAiResult.location || '';
-      document.getElementById('formDepartment').value = parsedAiResult.department || '';
+      setFormLocation(parsedAiResult.location || '');
+      setFormDepartment(parsedAiResult.department || '');
       document.getElementById('formCategory').value = parsedAiResult.category || '處室會議';
       document.getElementById('formDescription').value = parsedAiResult.description || '';
 
@@ -1661,14 +1786,14 @@
     }
 
     function simulateSmartChatReply(msg) {
-      if (msg.includes('第二會議室') || msg.includes('會議室')) {
-        return '已為您即時比對學校行事曆！下週二下午 13:30 至 16:30 之間，「二樓第一會議室」與「三樓研討室」均完全無人預約，屬於充足空檔，您可以安心排定。需要我直接為您開啟登記表單嗎？';
+      if (msg.includes('研習中心') || msg.includes('會議室') || msg.includes('場地')) {
+        return '已為您即時比對學校行事曆！下週二下午 13:30 至 16:30 之間，「行政大樓3F教師研習中心」與「科技館1F視廳教室」均完全無人預約，屬於充足空檔，您可以安心排定。需要我直接為您開啟登記表單嗎？';
       }
       if (msg.includes('教務處')) {
-        return '排程檢索結果：本週教務處於二樓第一會議室有安排彈性課程研討。週四下午與週五全天教務處目前均無登記其他會議，時段充裕。';
+        return '排程檢索結果：本週教務處於行政大樓3F教師研習中心有安排課程審查會議。週四下午與週五全天教務處目前均無登記其他會議，時段充裕。';
       }
       if (msg.includes('課發會') || msg.includes('推薦時段') || msg.includes('空檔')) {
-        return '建議時段分析：這週五下午 13:30 ~ 15:30 於「三樓研討室」或「活動中心」目前完全空閒，非常適合召開跨領域課發會議，建議可盡早於系統送出登記鎖定場地！';
+        return '建議時段分析：這週五下午 13:30 ~ 15:30 於「科技館2F科技智慧教室」或「學生活動中心」目前完全空閒，非常適合召開跨領域課發會議，建議可盡早於系統送出登記鎖定場地！';
       }
       return `收到您的提問：「${msg}」。我已即時核對全校會議行事曆資料庫，目前該時段各主要會議場地尚有充足空檔，歡迎點選「預約會議」或使用「AI 公文速填」快速排程！`;
     }
