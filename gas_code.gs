@@ -161,148 +161,188 @@ function getEvents() {
 
 // ── 新增會議事件 ───────────────────────────────────────────────────
 function addEvent(payload) {
-  var title = String(payload.title || '').trim();
-  var date = formatDate(payload.date);
-  var startTime = formatTime(payload.startTime);
-  var endTime = formatTime(payload.endTime);
-  var location = String(payload.location || '').trim();
-  var department = String(payload.department || '').trim();
-  var category = String(payload.category || '全校會議').trim();
-  var description = String(payload.description || '').trim();
-  var password = String(payload.password || '').trim();
-
-  if (!title || !date || !startTime || !endTime) {
-    return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
-  }
-  if (startTime >= endTime) {
-    return { status: 'error', message: '開始時間必須早於結束時間。' };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '伺服器繁忙中，請稍後再試。' };
   }
 
-  // 衝突檢查
-  var conflict = checkConflict(date, startTime, endTime, location, null);
-  if (conflict) {
-    return {
-      status: 'conflict',
-      message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
-               conflict.conflictingEvent.title + ' (' +
-               conflict.conflictingEvent.startTime + '~' +
-               conflict.conflictingEvent.endTime + ' ' +
-               conflict.conflictingEvent.department + ')',
-      conflictDetails: conflict.conflictingEvent
-    };
+  try {
+    var title = String(payload.title || '').trim();
+    var date = formatDate(payload.date);
+    var startTime = formatTime(payload.startTime);
+    var endTime = formatTime(payload.endTime);
+    var location = String(payload.location || '').trim();
+    var department = String(payload.department || '').trim();
+    var category = String(payload.category || '全校會議').trim();
+    var description = String(payload.description || '').trim();
+    var password = String(payload.password || '').trim();
+
+    if (!title || !date || !startTime || !endTime) {
+      return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
+    }
+    if (startTime >= endTime) {
+      return { status: 'error', message: '開始時間必須早於結束時間。' };
+    }
+
+    // 衝突檢查
+    var conflict = checkConflict(date, startTime, endTime, location, null);
+    if (conflict) {
+      return {
+        status: 'conflict',
+        message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
+                 conflict.conflictingEvent.title + ' (' +
+                 conflict.conflictingEvent.startTime + '~' +
+                 conflict.conflictingEvent.endTime + ' ' +
+                 conflict.conflictingEvent.department + ')',
+        conflictDetails: conflict.conflictingEvent
+      };
+    }
+
+    var id = Utilities.getUuid().substring(0, 8);
+    var pwdHash = hashPassword(password);
+    var nowStr = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+
+    var sheet = getSheet();
+    sheet.appendRow([
+      id,
+      title,
+      "'" + date,
+      "'" + startTime,
+      "'" + endTime,
+      location,
+      department,
+      category,
+      description,
+      pwdHash,
+      nowStr
+    ]);
+
+    SpreadsheetApp.flush();
+    return { status: 'success', message: '會議已成功登記！', id: id };
+  } finally {
+    lock.releaseLock();
   }
-
-  var id = Utilities.getUuid().substring(0, 8);
-  var pwdHash = hashPassword(password);
-  var nowStr = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
-
-  var sheet = getSheet();
-  sheet.appendRow([
-    id,
-    title,
-    "'" + date,
-    "'" + startTime,
-    "'" + endTime,
-    location,
-    department,
-    category,
-    description,
-    pwdHash,
-    nowStr
-  ]);
-
-  return { status: 'success', message: '會議已成功登記！', id: id };
 }
 
-// ── 更新/修改會議事件 (支援密碼驗證) ──────────────────────────────────
+// ── 更新/修改會議事件 (支援密碼驗證與密碼變更) ─────────────────────────
 function updateEvent(payload) {
-  var id = String(payload.id || '').trim();
-  var password = String(payload.password || '').trim();
-  if (!id) return { status: 'error', message: '請指定欲修改的會議 ID。' };
-
-  var title = String(payload.title || '').trim();
-  var date = formatDate(payload.date);
-  var startTime = formatTime(payload.startTime);
-  var endTime = formatTime(payload.endTime);
-  var location = String(payload.location || '').trim();
-  var department = String(payload.department || '').trim();
-  var category = String(payload.category || '全校會議').trim();
-  var description = String(payload.description || '').trim();
-
-  if (!title || !date || !startTime || !endTime) {
-    return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
-  }
-  if (startTime >= endTime) {
-    return { status: 'error', message: '開始時間必須早於結束時間。' };
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '伺服器繁忙中，請稍後再試。' };
   }
 
-  // 衝突檢查 (排除本筆 ID)
-  var conflict = checkConflict(date, startTime, endTime, location, id);
-  if (conflict) {
-    return {
-      status: 'conflict',
-      message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
-               conflict.conflictingEvent.title + ' (' +
-               conflict.conflictingEvent.startTime + '~' +
-               conflict.conflictingEvent.endTime + ' ' +
-               conflict.conflictingEvent.department + ')',
-      conflictDetails: conflict.conflictingEvent
-    };
-  }
+  try {
+    var id = String(payload.id || '').trim();
+    var password = String(payload.password || '').trim();
+    if (!id) return { status: 'error', message: '請指定欲修改的會議 ID。' };
 
-  var sheet = getSheet();
-  var data = sheet.getDataRange().getValues();
+    var title = String(payload.title || '').trim();
+    var date = formatDate(payload.date);
+    var startTime = formatTime(payload.startTime);
+    var endTime = formatTime(payload.endTime);
+    var location = String(payload.location || '').trim();
+    var department = String(payload.department || '').trim();
+    var category = String(payload.category || '全校會議').trim();
+    var description = String(payload.description || '').trim();
 
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === id) {
-      var storedHash = String(data[i][9]);
-      var inputHash = hashPassword(password);
-
-      // 若原設定密碼則需檢核
-      if (storedHash && storedHash !== inputHash) {
-        return { status: 'error', message: '驗證密碼不正確，無法修改此筆會議。' };
-      }
-
-      var rowIdx = i + 1;
-      sheet.getRange(rowIdx, 2).setValue(title);
-      sheet.getRange(rowIdx, 3).setValue("'" + date);
-      sheet.getRange(rowIdx, 4).setValue("'" + startTime);
-      sheet.getRange(rowIdx, 5).setValue("'" + endTime);
-      sheet.getRange(rowIdx, 6).setValue(location);
-      sheet.getRange(rowIdx, 7).setValue(department);
-      sheet.getRange(rowIdx, 8).setValue(category);
-      sheet.getRange(rowIdx, 9).setValue(description);
-
-      return { status: 'success', message: '會議已成功更新！' };
+    if (!title || !date || !startTime || !endTime) {
+      return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
     }
+    if (startTime >= endTime) {
+      return { status: 'error', message: '開始時間必須早於結束時間。' };
+    }
+
+    // 衝突檢查 (排除本筆 ID)
+    var conflict = checkConflict(date, startTime, endTime, location, id);
+    if (conflict) {
+      return {
+        status: 'conflict',
+        message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
+                 conflict.conflictingEvent.title + ' (' +
+                 conflict.conflictingEvent.startTime + '~' +
+                 conflict.conflictingEvent.endTime + ' ' +
+                 conflict.conflictingEvent.department + ')',
+        conflictDetails: conflict.conflictingEvent
+      };
+    }
+
+    var sheet = getSheet();
+    var data = sheet.getDataRange().getValues();
+
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === id) {
+        var storedHash = String(data[i][9]);
+        var inputHash = hashPassword(password);
+
+        // 若原設定密碼則需檢核
+        if (storedHash && storedHash !== inputHash) {
+          return { status: 'error', message: '驗證密碼不正確，無法修改此筆會議。' };
+        }
+
+        var rowIdx = i + 1;
+        sheet.getRange(rowIdx, 2).setValue(title);
+        sheet.getRange(rowIdx, 3).setValue("'" + date);
+        sheet.getRange(rowIdx, 4).setValue("'" + startTime);
+        sheet.getRange(rowIdx, 5).setValue("'" + endTime);
+        sheet.getRange(rowIdx, 6).setValue(location);
+        sheet.getRange(rowIdx, 7).setValue(department);
+        sheet.getRange(rowIdx, 8).setValue(category);
+        sheet.getRange(rowIdx, 9).setValue(description);
+
+        if (payload.newPassword && String(payload.newPassword).trim() !== '') {
+          sheet.getRange(rowIdx, 10).setValue(hashPassword(String(payload.newPassword).trim()));
+        }
+
+        SpreadsheetApp.flush();
+        return { status: 'success', message: '會議已成功更新！' };
+      }
+    }
+    return { status: 'error', message: '找不到該筆會議紀錄。' };
+  } finally {
+    lock.releaseLock();
   }
-  return { status: 'error', message: '找不到該筆會議紀錄。' };
 }
 
 // ── 刪除會議事件 (需密碼驗證) ──────────────────────────────────────
 function deleteEvent(payload) {
-  var id = String(payload.id || '').trim();
-  var password = String(payload.password || '').trim();
-
-  if (!id) return { status: 'error', message: '請指定欲刪除的會議 ID。' };
-
-  var sheet = getSheet();
-  var data = sheet.getDataRange().getValues();
-
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === id) {
-      var storedHash = String(data[i][9]);
-      var inputHash = hashPassword(password);
-
-      if (storedHash && storedHash !== inputHash) {
-        return { status: 'error', message: '刪除密碼不正確，無法刪除此筆會議。' };
-      }
-
-      sheet.deleteRow(i + 1);
-      return { status: 'success', message: '會議已成功刪除。' };
-    }
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '伺服器繁忙中，請稍後再試。' };
   }
-  return { status: 'error', message: '找不到該筆會議紀錄。' };
+
+  try {
+    var id = String(payload.id || '').trim();
+    var password = String(payload.password || '').trim();
+
+    if (!id) return { status: 'error', message: '請指定欲刪除的會議 ID。' };
+
+    var sheet = getSheet();
+    var data = sheet.getDataRange().getValues();
+
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === id) {
+        var storedHash = String(data[i][9]);
+        var inputHash = hashPassword(password);
+
+        if (storedHash && storedHash !== inputHash) {
+          return { status: 'error', message: '刪除密碼不正確，無法刪除此筆會議。' };
+        }
+
+        sheet.deleteRow(i + 1);
+        SpreadsheetApp.flush();
+        return { status: 'success', message: '會議已成功刪除。' };
+      }
+    }
+    return { status: 'error', message: '找不到該筆會議紀錄。' };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 
@@ -468,6 +508,30 @@ function aiChatSchedule(userMessage) {
   }
 }
 
+// ── AI 功能 4：會議紀錄草稿自動生成 (含決議與管考追蹤表) ──────────────
+function aiGenerateMinutes(ev, notes) {
+  var prompt = "會議基本資訊：\n" +
+               "會議名稱：" + (ev.title || '') + "\n" +
+               "時間：" + (ev.date || '') + " " + (ev.startTime || '') + "~" + (ev.endTime || '') + "\n" +
+               "地點：" + (ev.location || '') + "\n" +
+               "主辦單位：" + (ev.department || '') + "\n" +
+               "會議備註：" + (ev.description || '') + "\n\n" +
+               "現場筆記與討論要點：\n" + (notes || '全體同仁就核心議題深入討論並達成共識，各處室按權責分工落實。');
+
+  var systemPrompt = "你是一位精通台灣各級公立國中行政公務流程的校務秘書專家。\n" +
+                     "請根據提供的會議資訊與速記重點，輸出符合公立學校標準的正式「會議紀錄草案（含決議與管制追蹤表）」。\n" +
+                     "標準格式架構：\n" +
+                     "【桃園市立大溪國民中學 會議紀錄草案】\n" +
+                     "一、會議名稱\n二、開會時間\n三、開會地點\n四、主辦單位與主持人\n五、出席與列席人員\n六、主席致詞與重點提示\n七、各處室業務報告重點\n八、提案討論與決議事項（案由、說明、決議）\n九、會後決議管制追蹤事項表（項次、列管項目、主辦處室、完成期限）\n十、散會\n\n請以繁體中文 (台灣) 輸出排版整齊的純文字（可直接複製貼入公文系統或 Word）。";
+
+  try {
+    var resultText = callGeminiAPI(prompt, systemPrompt);
+    return { status: 'success', data: { minutes: resultText } };
+  } catch (err) {
+    return { status: 'error', message: err.message };
+  }
+}
+
 // ====================================================================
 // ── Web App 請求入口 (GET / POST) ──────────────────────────────────
 // ====================================================================
@@ -528,6 +592,8 @@ function doPost(e) {
       responseData = aiExtractEvent(payload.text);
     } else if (action === 'aiGenerateAgenda') {
       responseData = aiGenerateAgenda(payload.meetingData);
+    } else if (action === 'aiGenerateMinutes') {
+      responseData = aiGenerateMinutes(payload.event, payload.notes);
     } else if (action === 'aiChatSchedule') {
       responseData = aiChatSchedule(payload.message);
     } else {

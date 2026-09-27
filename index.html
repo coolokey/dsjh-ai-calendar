@@ -53,13 +53,23 @@
       .print-only { display: block !important; }
       body { background-color: #fff; }
       .print-border { border: 1px solid #e2e8f0; }
+      .custom-scrollbar {
+        max-height: none !important;
+        overflow: visible !important;
+      }
+      #calendarContainer {
+        box-shadow: none !important;
+      }
     }
     @media screen {
       .print-only { display: none !important; }
     }
   </style>
 </head>
-<body class="text-slate-800 min-h-screen flex flex-col">
+<body class="text-slate-800 min-h-screen flex flex-col relative">
+
+  <!-- ==================== 現代浮動 Toast 通知容器 ==================== -->
+  <div id="toastContainer" class="fixed top-5 right-5 z-[9999] flex flex-col gap-2.5 pointer-events-none no-print"></div>
 
   <!-- ==================== 列印專用抬頭 (僅在列印時顯現) ==================== -->
   <div class="print-only p-6 border-b-2 border-slate-900 mb-4">
@@ -454,6 +464,17 @@
           </div>
         </div>
 
+        <!-- 即時場地衝突雷達 (Real-time Conflict Radar) -->
+        <div id="liveConflictRadar" class="p-3 rounded-xl border transition-all duration-200 text-xs flex items-center justify-between bg-slate-50 border-slate-200">
+          <div class="flex items-center gap-2" id="radarStatusText">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+            <span class="text-slate-600 font-medium">請選取日期、時段與地點以啟動即時衝突偵測</span>
+          </div>
+          <button type="button" id="btnAutoRecommend" onclick="recommendAvailableSlot()" class="hidden text-[11px] font-bold text-purple-700 hover:text-purple-800 bg-purple-50 hover:bg-purple-100 border border-purple-200 px-2.5 py-1 rounded-md transition cursor-pointer">
+            <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>推薦空檔
+          </button>
+        </div>
+
         <!-- 分類 -->
         <div>
           <label class="block text-xs font-bold text-slate-700 mb-1">活動分類</label>
@@ -527,12 +548,15 @@
             <i class="fa-solid fa-sparkles text-purple-600"></i>
             <span>AI 行政協作秘書</span>
           </div>
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button onclick="generateLineNotification()" class="p-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer">
               <i class="fa-brands fa-line text-emerald-500 text-sm"></i> 生成推播文案
             </button>
             <button onclick="generateAgendaDraft()" class="p-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer">
-              <i class="fa-solid fa-file-lines text-blue-500 text-sm"></i> 產出議程範本
+              <i class="fa-solid fa-file-lines text-blue-500 text-sm"></i> 產出標準議程
+            </button>
+            <button onclick="generateMeetingMinutes()" class="p-2 bg-white hover:bg-purple-100 text-purple-700 border border-purple-300 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer">
+              <i class="fa-solid fa-clipboard-check text-purple-600 text-sm"></i> 會議紀錄草稿
             </button>
           </div>
           <!-- 產出文字預覽區 (可複製) -->
@@ -636,6 +660,32 @@
     </div>
   </div>
 
+  <!-- ==================== 彈窗 6：刪除會議密碼確認 Modal ==================== -->
+  <div id="deleteConfirmModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden flex items-center justify-center p-4 no-print">
+    <div class="bg-white rounded-2xl max-w-sm w-full shadow-2xl p-6 border border-slate-200 space-y-4">
+      <div class="flex items-center gap-3 text-red-600">
+        <div class="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-triangle-exclamation text-lg"></i>
+        </div>
+        <div>
+          <h3 class="font-bold text-base text-slate-900">確認刪除會議排程</h3>
+          <p class="text-xs text-slate-500 truncate max-w-[200px]" id="deleteTargetTitle">會議名稱</p>
+        </div>
+      </div>
+      <div class="space-y-1.5">
+        <label class="block text-xs font-bold text-slate-700">管理密碼驗證</label>
+        <input type="password" id="deleteInputPassword" placeholder="若建立時無設定密碼可留空" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:bg-white font-mono">
+        <p class="text-[11px] text-slate-400">※ 刪除後資料將自雲端行事曆與試算表永久移除。</p>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+        <button type="button" onclick="closeModal('deleteConfirmModal')" class="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg text-xs font-semibold cursor-pointer">取消</button>
+        <button type="button" onclick="executeDeleteEvent()" id="btnConfirmDelete" class="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer flex items-center gap-1.5">
+          <i class="fa-solid fa-trash"></i> 確認刪除
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== JAVASCRIPT 邏輯核心 ==================== -->
   <script>
     // ========================================================
@@ -654,6 +704,45 @@
         return saved.trim();
       }
       return DEFAULT_GAS_URL;
+    }
+
+    // ── 安全性字串轉義 (防止 XSS 攻擊) ──────────────────────────
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // ── SaaS 級浮動通知元件 (取代傳統阻塞式 alert) ───────────────
+    function showToast(message, type = 'info', duration = 3500) {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-lg text-xs font-semibold border transition-all duration-300 transform translate-y-[-10px] opacity-0 ${
+        type === 'success' ? 'bg-emerald-50 text-emerald-800 border-emerald-200 shadow-emerald-100/50' :
+        type === 'error' || type === 'conflict' ? 'bg-rose-50 text-rose-800 border-rose-200 shadow-rose-100/50' :
+        type === 'warning' ? 'bg-amber-50 text-amber-800 border-amber-200 shadow-amber-100/50' :
+        'bg-slate-900 text-white border-slate-800 shadow-slate-200/50'
+      }`;
+      const icon =
+        type === 'success' ? '<i class="fa-solid fa-circle-check text-emerald-600 text-sm shrink-0"></i>' :
+        type === 'error' || type === 'conflict' ? '<i class="fa-solid fa-circle-xmark text-rose-600 text-sm shrink-0"></i>' :
+        type === 'warning' ? '<i class="fa-solid fa-triangle-exclamation text-amber-500 text-sm shrink-0"></i>' :
+        '<i class="fa-solid fa-circle-info text-blue-400 text-sm shrink-0"></i>';
+
+      toast.innerHTML = `${icon}<span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-[-10px]', 'opacity-0');
+      });
+      setTimeout(() => {
+        toast.classList.add('opacity-0', 'translate-y-[-10px]');
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
     }
 
     // ── 核心狀態變數 ──────────────────────────────────────────
@@ -716,12 +805,13 @@
     window.addEventListener('DOMContentLoaded', () => {
       updateConnectionBadge();
       initEventsData();
+      setupLiveConflictListeners();
     });
 
     // 鍵盤 Esc 快捷鍵關閉所有彈窗
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        ['aiExtractModal', 'aiChatModal', 'addEventModal', 'eventDetailModal', 'setupModal'].forEach(id => {
+        ['aiExtractModal', 'aiChatModal', 'addEventModal', 'eventDetailModal', 'setupModal', 'deleteConfirmModal'].forEach(id => {
           closeModal(id);
         });
       }
@@ -842,18 +932,30 @@
     }
 
     function prevPeriod() {
-      if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() - 1);
+      if (currentView === 'month') {
+        currentDate.setDate(1);
+        currentDate.setMonth(currentDate.getMonth() - 1);
+      }
       else if (currentView === 'week') currentDate.setDate(currentDate.getDate() - 7);
       else if (currentView === 'day') currentDate.setDate(currentDate.getDate() - 1);
-      else currentDate.setMonth(currentDate.getMonth() - 1);
+      else {
+        currentDate.setDate(1);
+        currentDate.setMonth(currentDate.getMonth() - 1);
+      }
       renderCalendar();
     }
 
     function nextPeriod() {
-      if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + 1);
+      if (currentView === 'month') {
+        currentDate.setDate(1);
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
       else if (currentView === 'week') currentDate.setDate(currentDate.getDate() + 7);
       else if (currentView === 'day') currentDate.setDate(currentDate.getDate() + 1);
-      else currentDate.setMonth(currentDate.getMonth() + 1);
+      else {
+        currentDate.setDate(1);
+        currentDate.setMonth(currentDate.getMonth() + 1);
+      }
       renderCalendar();
     }
 
@@ -893,7 +995,7 @@
       return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
     }
 
-    // ── 1. 渲染月曆檢視 ──────────────────────────────────────
+    // ── 1. 渲染月曆檢視 (含手機版微型圓點指示與防 XSS) ───────
     function renderMonthView() {
       const container = document.getElementById('calendarContainer');
       const year = currentDate.getFullYear();
@@ -919,7 +1021,7 @@
 
       // 上個月填補空白
       for (let i = 0; i < startDayIndex; i++) {
-        html += `<div class="min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
+        html += `<div class="min-h-[70px] sm:min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
       }
 
       const todayStr = formatDateStr(new Date());
@@ -933,7 +1035,7 @@
         const dayEvents = filterEvents(eventsData).filter(e => e.date === thisDateStr);
 
         html += `
-          <div class="min-h-[110px] p-1.5 sm:p-2 bg-white hover:bg-slate-50/80 transition-colors flex flex-col justify-between group cursor-pointer" onclick="quickAddDate('${thisDateStr}')">
+          <div class="min-h-[75px] sm:min-h-[110px] p-1.5 sm:p-2 bg-white hover:bg-slate-50/80 transition-colors flex flex-col justify-between group cursor-pointer" onclick="quickAddDate('${thisDateStr}')">
             <div class="flex items-center justify-between mb-1">
               <span class="w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold ${isToday ? 'bg-brand-600 text-white' : 'text-slate-700'}">
                 ${day}
@@ -943,11 +1045,17 @@
               </button>
             </div>
             
-            <div class="flex-1 space-y-1 overflow-y-auto max-h-[85px] custom-scrollbar">
+            <!-- 手機版微型彩點指示器 (避免小螢幕文字擠壓變形) -->
+            <div class="sm:hidden flex flex-wrap gap-1 mt-1 justify-center">
+              ${dayEvents.map(e => `<span class="w-2 h-2 rounded-full ${getDotColor(e.category)} inline-block" title="${escapeHtml(e.title)} (${escapeHtml(e.startTime)})"></span>`).join('')}
+            </div>
+
+            <!-- 電腦版會議膠囊卡片 (含 XSS 防護) -->
+            <div class="hidden sm:block flex-1 space-y-1 overflow-y-auto max-h-[85px] custom-scrollbar">
               ${dayEvents.map(e => `
-                <div onclick="event.stopPropagation(); openEventDetail('${e.id}')" class="px-1.5 py-1 rounded text-[11px] font-medium truncate flex items-center gap-1 border ${getBadgeClass(e.category)}" title="${e.startTime}~${e.endTime} ${e.title} (${e.location})">
+                <div onclick="event.stopPropagation(); openEventDetail('${escapeHtml(e.id)}')" class="px-1.5 py-1 rounded text-[11px] font-medium truncate flex items-center gap-1 border ${getBadgeClass(e.category)}" title="${escapeHtml(e.startTime)}~${escapeHtml(e.endTime)} ${escapeHtml(e.title)} (${escapeHtml(e.location)})">
                   <span class="w-1.5 h-1.5 rounded-full ${getDotColor(e.category)} shrink-0"></span>
-                  <span class="truncate">${e.startTime} ${e.title}</span>
+                  <span class="truncate">${escapeHtml(e.startTime)} ${escapeHtml(e.title)}</span>
                 </div>
               `).join('')}
             </div>
@@ -959,7 +1067,7 @@
       const totalRendered = startDayIndex + totalDays;
       const trailing = (7 - (totalRendered % 7)) % 7;
       for (let i = 0; i < trailing; i++) {
-        html += `<div class="min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
+        html += `<div class="min-h-[70px] sm:min-h-[100px] p-2 bg-slate-50/50 text-slate-300 text-xs"></div>`;
       }
 
       html += `</div>`;
@@ -1002,10 +1110,10 @@
             return `
               <div class="p-2 space-y-2 bg-white hover:bg-slate-50/50 transition cursor-pointer flex flex-col justify-start" onclick="quickAddDate('${dStr}')">
                 ${dayEvents.map(e => `
-                  <div onclick="event.stopPropagation(); openEventDetail('${e.id}')" class="p-2 rounded-lg border text-xs ${getBadgeClass(e.category)} space-y-1 shadow-2xs hover:shadow transition">
-                    <div class="font-bold truncate text-slate-800">${e.title}</div>
-                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${e.startTime}~${e.endTime}</div>
-                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-solid fa-location-dot"></i> ${e.location}</div>
+                  <div onclick="event.stopPropagation(); openEventDetail('${escapeHtml(e.id)}')" class="p-2 rounded-lg border text-xs ${getBadgeClass(e.category)} space-y-1 shadow-2xs hover:shadow transition">
+                    <div class="font-bold truncate text-slate-800">${escapeHtml(e.title)}</div>
+                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-regular fa-clock"></i> ${escapeHtml(e.startTime)}~${escapeHtml(e.endTime)}</div>
+                    <div class="text-[11px] text-slate-500 flex items-center gap-1"><i class="fa-solid fa-location-dot"></i> ${escapeHtml(e.location)}</div>
                   </div>
                 `).join('')}
               </div>
@@ -1041,16 +1149,16 @@
                 <p class="text-sm">本日目前尚無任何會議排程，歡迎預約！</p>
               </div>
             ` : dayEvents.map(e => `
-              <div onclick="openEventDetail('${e.id}')" class="p-4 rounded-xl border ${getBadgeClass(e.category)} flex items-center justify-between hover:shadow-md transition cursor-pointer">
+              <div onclick="openEventDetail('${escapeHtml(e.id)}')" class="p-4 rounded-xl border ${getBadgeClass(e.category)} flex items-center justify-between hover:shadow-md transition cursor-pointer">
                 <div class="space-y-1">
                   <div class="flex items-center gap-2">
-                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getDotColor(e.category)} text-white">${e.category}</span>
-                    <span class="text-xs font-semibold text-slate-500">${e.department}</span>
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${getDotColor(e.category)} text-white">${escapeHtml(e.category)}</span>
+                    <span class="text-xs font-semibold text-slate-500">${escapeHtml(e.department)}</span>
                   </div>
-                  <h4 class="text-base font-bold text-slate-800">${e.title}</h4>
+                  <h4 class="text-base font-bold text-slate-800">${escapeHtml(e.title)}</h4>
                   <div class="flex items-center gap-4 text-xs text-slate-600 pt-1">
-                    <span><i class="fa-regular fa-clock mr-1 text-slate-400"></i>${e.startTime} ~ ${e.endTime}</span>
-                    <span><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${e.location}</span>
+                    <span><i class="fa-regular fa-clock mr-1 text-slate-400"></i>${escapeHtml(e.startTime)} ~ ${escapeHtml(e.endTime)}</span>
+                    <span><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${escapeHtml(e.location)}</span>
                   </div>
                 </div>
                 <i class="fa-solid fa-chevron-right text-slate-400"></i>
@@ -1085,15 +1193,15 @@
               ${filtered.length === 0 ? `
                 <tr><td colspan="7" class="text-center p-12 text-slate-400">無符合條件的會議紀錄</td></tr>
               ` : filtered.map(e => `
-                <tr onclick="openEventDetail('${e.id}')" class="hover:bg-slate-50/80 transition cursor-pointer">
-                  <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${e.date}</td>
-                  <td class="p-3.5 font-semibold text-brand-600 whitespace-nowrap">${e.startTime} ~ ${e.endTime}</td>
-                  <td class="p-3.5 font-bold text-slate-900 max-w-xs truncate">${e.title}</td>
-                  <td class="p-3.5 text-slate-700">${e.location}</td>
-                  <td class="p-3.5 text-slate-600">${e.department}</td>
+                <tr onclick="openEventDetail('${escapeHtml(e.id)}')" class="hover:bg-slate-50/80 transition cursor-pointer">
+                  <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap">${escapeHtml(e.date)}</td>
+                  <td class="p-3.5 font-semibold text-brand-600 whitespace-nowrap">${escapeHtml(e.startTime)} ~ ${escapeHtml(e.endTime)}</td>
+                  <td class="p-3.5 font-bold text-slate-900 max-w-xs truncate">${escapeHtml(e.title)}</td>
+                  <td class="p-3.5 text-slate-700">${escapeHtml(e.location)}</td>
+                  <td class="p-3.5 text-slate-600">${escapeHtml(e.department)}</td>
                   <td class="p-3.5 whitespace-nowrap">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeClass(e.category)}">
-                      ${e.category}
+                      ${escapeHtml(e.category)}
                     </span>
                   </td>
                   <td class="p-3.5 text-center whitespace-nowrap">
@@ -1268,10 +1376,121 @@
       }
     }
 
+    // ── 即時衝突雷達 (Debounced Live Conflict Radar) ─────────────
+    let conflictTimer = null;
+    function setupLiveConflictListeners() {
+      ['formDate', 'formStartTime', 'formEndTime', 'formLocation', 'formLocationOther'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', () => {
+            clearTimeout(conflictTimer);
+            conflictTimer = setTimeout(checkLiveConflict, 150);
+          });
+          el.addEventListener('change', () => {
+            clearTimeout(conflictTimer);
+            conflictTimer = setTimeout(checkLiveConflict, 50);
+          });
+        }
+      });
+    }
+
+    function checkLiveConflict() {
+      const radar = document.getElementById('liveConflictRadar');
+      const dot = document.getElementById('radarDot');
+      const text = document.getElementById('radarText');
+      const btnRec = document.getElementById('btnAutoRecommend');
+      if (!radar || !dot || !text) return;
+
+      const date = document.getElementById('formDate')?.value;
+      const startTime = document.getElementById('formStartTime')?.value;
+      const endTime = document.getElementById('formEndTime')?.value;
+      const location = getFormLocation();
+      const editId = document.getElementById('formEditId')?.value?.trim();
+
+      if (!date || !startTime || !endTime || !location) {
+        radar.classList.add('hidden');
+        return;
+      }
+
+      if (startTime >= endTime) {
+        radar.classList.remove('hidden');
+        radar.className = 'p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all bg-amber-50 text-amber-800 border-amber-200';
+        dot.className = 'w-2 h-2 rounded-full shrink-0 bg-amber-500';
+        text.innerText = '結束時間必須晚於開始時間。';
+        if (btnRec) btnRec.classList.add('hidden');
+        return;
+      }
+
+      // 檢查 eventsData 是否有同地點同日期重疊
+      const conflict = eventsData.find(ex => {
+        if (editId && ex.id === editId) return false;
+        if (ex.date === date && ex.location.toLowerCase() === location.toLowerCase()) {
+          return (startTime < ex.endTime && endTime > ex.startTime);
+        }
+        return false;
+      });
+
+      radar.classList.remove('hidden');
+      if (conflict) {
+        radar.className = 'p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all bg-rose-50 text-rose-800 border-rose-200';
+        dot.className = 'w-2 h-2 rounded-full shrink-0 bg-rose-500 animate-pulse';
+        text.innerHTML = `⚠️ <strong>場地衝突預警：</strong>${escapeHtml(location)} 該時段已有「${escapeHtml(conflict.title)}」(${escapeHtml(conflict.startTime)}~${escapeHtml(conflict.endTime)} ${escapeHtml(conflict.department)})！`;
+        if (btnRec) btnRec.classList.remove('hidden');
+      } else {
+        radar.className = 'p-2.5 rounded-lg border text-xs flex items-center justify-between transition-all bg-emerald-50 text-emerald-800 border-emerald-200';
+        dot.className = 'w-2 h-2 rounded-full shrink-0 bg-emerald-500';
+        text.innerHTML = `✨ <strong>時段空閒：</strong>此時段「${escapeHtml(location)}」完全無其他排程，可安心登記！`;
+        if (btnRec) btnRec.classList.add('hidden');
+      }
+    }
+
+    function recommendAvailableSlot() {
+      const date = document.getElementById('formDate')?.value;
+      const location = getFormLocation();
+      const editId = document.getElementById('formEditId')?.value?.trim();
+      if (!date || !location) {
+        showToast('請先選定會議日期與地點', 'warning');
+        return;
+      }
+
+      // 校園常態一小時會議時段候選池
+      const candidateSlots = [
+        { start: '08:30', end: '09:30' },
+        { start: '09:30', end: '10:30' },
+        { start: '10:30', end: '11:30' },
+        { start: '13:30', end: '14:30' },
+        { start: '14:30', end: '15:30' },
+        { start: '15:30', end: '16:30' }
+      ];
+
+      for (const slot of candidateSlots) {
+        const conflict = eventsData.find(ex => {
+          if (editId && ex.id === editId) return false;
+          if (ex.date === date && ex.location.toLowerCase() === location.toLowerCase()) {
+            return (slot.start < ex.endTime && slot.end > ex.startTime);
+          }
+          return false;
+        });
+
+        if (!conflict) {
+          document.getElementById('formStartTime').value = slot.start;
+          document.getElementById('formEndTime').value = slot.end;
+          checkLiveConflict();
+          showToast(`已為您自動推薦並填入無衝突時段：${slot.start} ~ ${slot.end}`, 'success');
+          return;
+        }
+      }
+
+      showToast('當日所有常態時段皆有預約，建議更換會議地點或微調日期。', 'warning');
+    }
+
     function resetAddForm() {
       document.getElementById('addEventForm').reset();
       document.getElementById('formEditId').value = '';
       document.getElementById('btnSubmitAdd').innerText = '確認預約';
+      const radar = document.getElementById('liveConflictRadar');
+      if (radar) radar.classList.add('hidden');
+      document.getElementById('formConflictAlert').classList.add('hidden');
       handleLocationChange();
       handleDepartmentChange();
     }
@@ -1315,10 +1534,10 @@
       document.getElementById('formConflictAlert').classList.add('hidden');
 
       openModal('addEventModal');
+      setTimeout(checkLiveConflict, 100);
     }
 
-
-    // ── AI 生成 LINE 推播文案 ────────────────────────────────
+    // ── AI 1. 生成 LINE 推播文案 ──────────────────────────────
     async function generateLineNotification() {
       if (!activeEvent) return;
       const box = document.getElementById('aiGeneratedOutputBox');
@@ -1354,7 +1573,7 @@
       }
     }
 
-    // ── AI 生成會議議程草案 ──────────────────────────────────
+    // ── AI 2. 生成會議議程草案 ────────────────────────────────
     async function generateAgendaDraft() {
       if (!activeEvent) return;
       const box = document.getElementById('aiGeneratedOutputBox');
@@ -1390,27 +1609,76 @@
       }
     }
 
+    // ── AI 3. 生成會議紀錄初稿草案 ────────────────────────────
+    async function generateMeetingMinutes() {
+      if (!activeEvent) return;
+      const box = document.getElementById('aiGeneratedOutputBox');
+      const label = document.getElementById('aiOutputLabel');
+      const textarea = document.getElementById('aiOutputText');
+
+      box.classList.remove('hidden');
+      label.innerText = '✨ 會議紀錄初稿草案 (Gemini AI 自動彙整)：';
+      textarea.value = 'AI 正在依據會議資訊與討論要點生成會議紀錄草稿...';
+
+      const url = getActiveGasUrl();
+      if (url === 'DEMO_MODE') {
+        setTimeout(() => {
+          textarea.value = `【桃園市立大溪國民中學 會議紀錄草稿】\n\n一、會議名稱：${activeEvent.title}\n二、開會時間：${activeEvent.date} ${activeEvent.startTime} ~ ${activeEvent.endTime}\n三、開會地點：${activeEvent.location}\n四、主辦處室：${activeEvent.department}　　主席：校長 / 召集人　紀錄：行政同仁\n五、出席人員：各處室主任、組長及業務承辦人員 (詳如簽到表)\n\n六、主席致詞：\n    感謝同仁準時出席，請針對今日提案務實討論並確立期程。\n\n七、各處室工作報告：\n    (一) ${activeEvent.department}報告：依學期進度提報工作成果與後續規劃。\n    (二) 補充事項：${activeEvent.description || '請相關組別落實會後追蹤管制。'}\n\n八、提案討論與決議事項：\n    案由一：${activeEvent.title} 核心推行計畫\n    說明：${activeEvent.description || '請相關處室落實細部配套。'}\n    決議：照案通過，請相關處室於兩週內完成細部配套並公告週知。\n\n九、臨時動議：無。\n十、散會\n\n※ 本紀錄草稿經由 Gemini 智慧行政助理自動彙整生成，承辦同仁可微調後陳核存檔。`;
+        }, 500);
+        return;
+      }
+
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'aiGenerateMinutes', meetingData: activeEvent })
+        });
+        const json = await res.json();
+        if (json.status === 'success' && json.data) {
+          textarea.value = json.data.minutesDraft || '產出完成';
+        } else {
+          textarea.value = 'AI 產出失敗：' + (json.message || '請檢查 API Key');
+        }
+      } catch (e) {
+        textarea.value = '連線異常，已切換至預設會議紀錄範本生成。';
+      }
+    }
+
     function copyGeneratedText() {
       const txt = document.getElementById('aiOutputText').value;
       navigator.clipboard.writeText(txt).then(() => {
-        alert('文字已成功複製到剪貼簿！');
+        showToast('文字已成功複製到剪貼簿！', 'success');
       }).catch(() => {
-        alert('複製失敗，請手動全選複製。');
+        showToast('複製失敗，請手動全選複製。', 'warning');
       });
     }
 
-    // ── 刪除會議紀錄 ──────────────────────────────────────────
-    async function promptDeleteEvent() {
+    // ── 刪除會議紀錄 (呼叫無阻塞確認彈窗) ────────────────────
+    function promptDeleteEvent() {
       if (!activeEvent) return;
-      const pwd = prompt('請輸入此筆會議的管理密碼（建立時若未填寫密碼可直接按確定）：');
-      if (pwd === null) return;
+      document.getElementById('deleteTargetTitle').innerText = activeEvent.title;
+      document.getElementById('deleteInputPassword').value = '';
+      openModal('deleteConfirmModal');
+      setTimeout(() => document.getElementById('deleteInputPassword').focus(), 100);
+    }
+
+    async function executeDeleteEvent() {
+      if (!activeEvent) return;
+      const pwd = document.getElementById('deleteInputPassword').value.trim();
+      const btn = document.getElementById('btnConfirmDelete');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> 刪除中...';
 
       const url = getActiveGasUrl();
       if (url === 'DEMO_MODE') {
         eventsData = eventsData.filter(e => e.id !== activeEvent.id);
         saveMockEvents();
-        alert('【展示模式】會議已成功刪除！');
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> 確認刪除';
+        closeModal('deleteConfirmModal');
         closeModal('eventDetailModal');
+        showToast('【展示模式】會議已成功刪除！', 'success');
         renderCalendar();
         return;
       }
@@ -1422,15 +1690,21 @@
           body: JSON.stringify({ action: 'deleteEvent', id: activeEvent.id, password: pwd })
         });
         const json = await res.json();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> 確認刪除';
+
         if (json.status === 'success') {
-          alert('會議已成功刪除！');
+          closeModal('deleteConfirmModal');
           closeModal('eventDetailModal');
+          showToast('會議已成功刪除！', 'success');
           fetchLiveEvents();
         } else {
-          alert('刪除失敗：' + (json.message || '密碼不正確'));
+          showToast('刪除失敗：' + (json.message || '密碼不正確'), 'error');
         }
       } catch (e) {
-        alert('連線失敗：' + e.toString());
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-trash"></i> 確認刪除';
+        showToast('連線失敗：' + e.toString(), 'error');
       }
     }
 
@@ -1447,12 +1721,12 @@
       const loc = getFormLocation();
       const dep = getFormDepartment();
       if (!loc) {
-        alert('請選擇或填寫會議地點！');
+        showToast('請選擇或填寫會議地點！', 'warning');
         document.getElementById('formLocation').focus();
         return;
       }
       if (!dep) {
-        alert('請選擇或填寫主辦單位/處室！');
+        showToast('請選擇或填寫主辦單位/處室！', 'warning');
         document.getElementById('formDepartment').focus();
         return;
       }
@@ -1471,7 +1745,7 @@
       };
 
       if (payload.startTime >= payload.endTime) {
-        alert('結束時間必須晚於開始時間！');
+        showToast('結束時間必須晚於開始時間！', 'warning');
         return;
       }
 
@@ -1487,6 +1761,7 @@
       if (conflict) {
         alertBox.classList.remove('hidden');
         alertMsg.innerText = `【場地衝突】${payload.location} 在該時段已有會議：${conflict.title} (${conflict.startTime}~${conflict.endTime} ${conflict.department})！`;
+        showToast(`場地衝突：${payload.location} 該時段已被預約！`, 'conflict');
         return;
       }
 
@@ -1502,11 +1777,11 @@
             if (idx !== -1) {
               eventsData[idx] = { ...eventsData[idx], ...payload };
             }
-            alert('【展示模式】會議排程修改成功！');
+            showToast('【展示模式】會議排程修改成功！', 'success');
           } else {
             payload.id = 'demo-' + Date.now().toString().slice(-4);
             eventsData.push(payload);
-            alert('【展示模式】會議預約成功！');
+            showToast('【展示模式】會議預約成功！', 'success');
           }
           saveMockEvents();
           btn.disabled = false;
@@ -1532,18 +1807,19 @@
         if (json.status === 'success') {
           closeModal('addEventModal');
           resetAddForm();
-          alert(isEditing ? '會議已成功更新至 Google 雲端！' : '會議已成功登記至 Google 雲端！');
+          showToast(isEditing ? '會議已成功更新至 Google 雲端！' : '會議已成功登記至 Google 雲端！', 'success');
           fetchLiveEvents();
         } else if (json.status === 'conflict') {
           alertBox.classList.remove('hidden');
           alertMsg.innerText = json.message;
+          showToast(json.message, 'conflict');
         } else {
-          alert('操作失敗：' + (json.message || '未知錯誤'));
+          showToast('操作失敗：' + (json.message || '未知錯誤'), 'error');
         }
       } catch (err) {
         btn.disabled = false;
         btn.innerText = isEditing ? '更新排程' : '確認預約';
-        alert('連線失敗：' + err.toString());
+        showToast('連線失敗：' + err.toString(), 'error');
       }
     }
 
@@ -1570,7 +1846,7 @@
     async function runAiExtract() {
       const text = document.getElementById('aiRawInput').value.trim();
       if (!text) {
-        alert('請先輸入或貼上公文/通知文字！');
+        showToast('請先輸入或貼上公文/通知文字！', 'warning');
         return;
       }
 
@@ -1585,6 +1861,7 @@
           renderAiResultCard(parsedAiResult);
           btn.disabled = false;
           btn.innerHTML = '<i class="fa-solid fa-brain mr-2"></i>呼叫 Gemini AI 智慧分析';
+          showToast('公文語意解析成功！已提取會議資訊。', 'success');
         }, 800);
         return;
       }
@@ -1602,13 +1879,14 @@
         if (json.status === 'success' && json.data) {
           parsedAiResult = json.data;
           renderAiResultCard(parsedAiResult);
+          showToast('Gemini AI 解析成功！已提取會議欄位。', 'success');
         } else {
-          alert('AI 解析失敗：' + (json.message || '請確認 API 金鑰'));
+          showToast('AI 解析失敗：' + (json.message || '請確認 API 金鑰'), 'error');
         }
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = '<i class="fa-solid fa-brain mr-2"></i>呼叫 Gemini AI 智慧分析';
-        alert('連線失敗：' + err.toString());
+        showToast('連線失敗：' + err.toString(), 'error');
       }
     }
 
@@ -1811,12 +2089,13 @@
           </div>
         `;
       } else {
+        const safeText = escapeHtml(text).replace(/\n/g, '<br>');
         div.innerHTML = `
           <div class="w-7 h-7 rounded-full bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
             <i class="fa-solid fa-robot text-xs"></i>
           </div>
           <div class="bg-white p-3 rounded-2xl rounded-tl-none border border-slate-200 shadow-xs max-w-[85%] text-slate-700 leading-relaxed">
-            <p>${text.replace(/\n/g, '<br>')}</p>
+            <p>${safeText}</p>
           </div>
         `;
       }
@@ -1849,36 +2128,43 @@
       if (el) el.remove();
     }
 
-    function escapeHtml(str) {
-      return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+    // ========================================================
+    // ★★★ 匯出功能 (CSV 試算表，防試算表公式注入攻擊) ★★★
+    // ========================================================
+    function sanitizeCsvCell(str) {
+      if (str === null || str === undefined) return '""';
+      let s = String(str).replace(/"/g, '""');
+      // 防止 Excel / Google Sheets CSV 惡意公式執行 (=, +, -, @, Tab, CR)
+      if (/^[=\+\-@\t\r]/.test(s)) {
+        s = "'" + s;
+      }
+      return `"${s}"`;
     }
 
-    // ========================================================
-    // ★★★ 匯出功能 (CSV 試算表) ★★★
-    // ========================================================
     function exportToCsv() {
       const list = filterEvents(eventsData);
       if (list.length === 0) {
-        alert('目前無可匯出的會議資料。');
+        showToast('目前無可匯出的會議資料。', 'warning');
         return;
       }
 
       const headers = ['ID', '會議名稱', '日期', '開始時間', '結束時間', '會議地點', '主辦處室', '分類', '備註說明'];
       const rows = list.map(e => [
-        `"${e.id || ''}"`,
-        `"${(e.title || '').replace(/"/g, '""')}"`,
-        `"${e.date || ''}"`,
-        `"${e.startTime || ''}"`,
-        `"${e.endTime || ''}"`,
-        `"${(e.location || '').replace(/"/g, '""')}"`,
-        `"${(e.department || '').replace(/"/g, '""')}"`,
-        `"${e.category || ''}"`,
-        `"${(e.description || '').replace(/"/g, '""')}"`
+        sanitizeCsvCell(e.id),
+        sanitizeCsvCell(e.title),
+        sanitizeCsvCell(e.date),
+        sanitizeCsvCell(e.startTime),
+        sanitizeCsvCell(e.endTime),
+        sanitizeCsvCell(e.location),
+        sanitizeCsvCell(e.department),
+        sanitizeCsvCell(e.category),
+        sanitizeCsvCell(e.description)
       ]);
 
       const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
       downloadBlob(blob, `dsjh_meetings_${formatDateStr(new Date())}.csv`);
+      showToast('會議排程清單已成功匯出為 CSV 試算表！', 'success');
     }
 
     function downloadBlob(blob, filename) {
@@ -1915,13 +2201,13 @@
 
       if (!val || val === DEFAULT_GAS_URL) {
         localStorage.removeItem(STORAGE_KEY_GAS_URL);
-        alert('已設定為預設官方 Google Apps Script 後端！');
+        showToast('已設定為預設官方 Google Apps Script 後端！', 'success');
       } else if (val === 'DEMO_MODE') {
         localStorage.setItem(STORAGE_KEY_GAS_URL, 'DEMO_MODE');
-        alert('已切換為「展示模式 (Demo)」！');
+        showToast('已切換為「展示模式 (Demo)」！', 'info');
       } else {
         localStorage.setItem(STORAGE_KEY_GAS_URL, val);
-        alert('已成功儲存自訂 Google Apps Script 雲端連線網址！');
+        showToast('已成功儲存自訂 Google Apps Script 雲端連線網址！', 'success');
       }
 
       closeModal('setupModal');
