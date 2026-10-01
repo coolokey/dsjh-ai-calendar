@@ -438,7 +438,7 @@
               <option value="">請選擇地點...</option>
               <option value="學生活動中心">學生活動中心</option>
               <option value="行政大樓3F教師研習中心">行政大樓3F教師研習中心</option>
-              <option value="科技館1F視廳教室">科技館1F視廳教室</option>
+              <option value="科技館1F視聽教室">科技館1F視聽教室</option>
               <option value="科技館2F科技智慧教室">科技館2F科技智慧教室</option>
               <option value="科技館2F科技創作教室">科技館2F科技創作教室</option>
               <option value="圖書館">圖書館</option>
@@ -782,7 +782,7 @@
           date: formatDateOffset(4),
           startTime: '14:00',
           endTime: '15:30',
-          location: '科技館1F視廳教室',
+          location: '科技館1F視聽教室',
           department: '輔導室',
           category: '處室會議',
           description: '討論親師座談會當日動線引導、家長簽到與特教輔導諮詢專線安排。'
@@ -1839,7 +1839,7 @@
       } else if (type === 2) {
         input.value = `各處室主任好：\n本週五（9/22）上午第二節（09:15~10:00）請於新大樓1F視聽中心召開主管會報，將針對校慶籌備進度及各組經費編列進行對焦，請總務處先彙整各處室需求，謝謝！`;
       } else if (type === 3) {
-        input.value = `輔導室公告：下週三晚上7點到8點半在科技館1F視廳教室舉辦「國三親師升學諮詢家長座談會」，由輔導室特教組主辦，備有茶水，請家長於門口簽到入場。`;
+        input.value = `輔導室公告：下週三晚上7點到8點半在科技館1F視聽教室舉辦「國三親師升學諮詢家長座談會」，由輔導室特教組主辦，備有茶水，請家長於門口簽到入場。`;
       }
     }
 
@@ -1949,7 +1949,7 @@
       const locCandidates = [
         '學生活動中心', '活動中心',
         '行政大樓3F教師研習中心', '教師研習中心', '研習中心',
-        '科技館1F視廳教室', '科技館2F科技智慧教室', '科技館2F科技創作教室', '科技館',
+        '科技館1F視聽教室', '科技館2F科技智慧教室', '科技館2F科技創作教室', '科技館',
         '圖書館', '校史室', '新大樓1F視聽中心', '視聽中心'
       ];
       for (const loc of locCandidates) {
@@ -1957,7 +1957,7 @@
           if (loc === '活動中心') location = '學生活動中心';
           else if (loc === '教師研習中心' || loc === '研習中心') location = '行政大樓3F教師研習中心';
           else if (loc === '視聽中心') location = '新大樓1F視聽中心';
-          else if (loc === '科技館') location = '科技館1F視廳教室';
+          else if (loc === '科技館') location = '科技館1F視聽教室';
           else location = loc;
           break;
         }
@@ -2065,7 +2065,7 @@
 
     function simulateSmartChatReply(msg) {
       if (msg.includes('研習中心') || msg.includes('會議室') || msg.includes('場地')) {
-        return '已為您即時比對學校行事曆！下週二下午 13:30 至 16:30 之間，「行政大樓3F教師研習中心」與「科技館1F視廳教室」均完全無人預約，屬於充足空檔，您可以安心排定。需要我直接為您開啟登記表單嗎？';
+        return '已為您即時比對學校行事曆！下週二下午 13:30 至 16:30 之間，「行政大樓3F教師研習中心」與「科技館1F視聽教室」均完全無人預約，屬於充足空檔，您可以安心排定。需要我直接為您開啟登記表單嗎？';
       }
       if (msg.includes('教務處')) {
         return '排程檢索結果：本週教務處於行政大樓3F教師研習中心有安排課程審查會議。週四下午與週五全天教務處目前均無登記其他會議，時段充裕。';
