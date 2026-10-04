@@ -496,6 +496,14 @@ function aiGenerateAgenda(meetingData) {
   }
 }
 
+function sanitizeScheduleText_(value) {
+  var str = String(value || '');
+  return str
+    .replace(/[A-Z][12]\d{8}/g, '[身分證遮蔽]')
+    .replace(/09\d{2}[-\s]?\d{3}[-\s]?\d{3}/g, '[電話遮蔽]')
+    .replace(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[信箱遮蔽]');
+}
+
 // ── AI 功能 3：智慧排程對話助手 (詢問空檔或建議場地) ────────────────
 function aiChatSchedule(userMessage) {
   if (sensitiveInput_(userMessage)) return { status: 'error', message: '請先移除提問中的個資或機密資料。' };
@@ -505,10 +513,10 @@ function aiChatSchedule(userMessage) {
       date: event.date,
       startTime: event.startTime,
       endTime: event.endTime,
-      location: event.location,
-      department: event.department,
-      category: event.category,
-      title: event.title
+      location: sanitizeScheduleText_(event.location),
+      department: sanitizeScheduleText_(event.department),
+      category: sanitizeScheduleText_(event.category),
+      title: sanitizeScheduleText_(event.title)
     };
   });
   if (sensitiveInput_(JSON.stringify(events))) return { status: 'error', message: '場地資料可能含個資，請先由管理人員確認。' };
