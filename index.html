@@ -695,7 +695,26 @@
     const STORAGE_KEY_GAS_URL = 'DSJH_GAS_API_URL';
     const STORAGE_KEY_LOCAL_EVENTS = 'DSJH_LOCAL_MOCK_EVENTS';
 
+    let connectionFallback = false;
+    async function safeFetch(url, options = {}) {
+      if (options.body) {
+        const payload = JSON.parse(options.body);
+        if (String(payload.action || '').startsWith('ai')) {
+          if (!window.confirm('僅可傳送公開且已移除個資的文字至外部 AI。請確認不含學生姓名、聯絡資料、機密或個案內容；產出須由承辦人審查。')) throw new Error('已取消傳送');
+        }
+      }
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 20000);
+      try {
+        const response = await fetch(url, {...options, signal: controller.signal});
+        // Read within the timeout as a response body can also stall.
+        const body = await response.text();
+        return {ok: response.ok, status: response.status, json: async () => JSON.parse(body)};
+      } finally { clearTimeout(timer); }
+    }
+
     function getActiveGasUrl() {
+      if (connectionFallback) return 'DEMO_MODE';
       const saved = localStorage.getItem(STORAGE_KEY_GAS_URL);
       if (saved === 'DEMO_MODE') {
         return 'DEMO_MODE';
@@ -825,8 +844,8 @@
 
       if (url === 'DEMO_MODE') {
         badge.className = 'hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 cursor-pointer';
-        text.innerText = 'AI 展示模式';
-        if (sessionStorage.getItem('dismissBanner') !== 'true') {
+        text.innerText = connectionFallback ? '連線失敗：模擬展示' : '模擬展示（非 AI 運算）';
+        if (true) {
           banner.classList.remove('hidden');
         } else {
           banner.classList.add('hidden');
@@ -839,8 +858,7 @@
     }
 
     function dismissBanner() {
-      document.getElementById('demoNoticeBanner').classList.add('hidden');
-      sessionStorage.setItem('dismissBanner', 'true');
+      showToast('目前為模擬展示，資料不會寫入正式雲端。', 'info');
     }
 
     // ── 載入資料 (正式連線或展示模式) ─────────────────────────
@@ -877,17 +895,22 @@
       if (icon) icon.classList.add('fa-spin');
 
       try {
-        const res = await fetch(`${url}?action=getEvents`);
+        const res = await safeFetch(`${url}?action=getEvents`);
         const json = await res.json();
         if (json.status === 'success') {
           eventsData = json.data || [];
           renderCalendar();
+          document.getElementById('connectionStatusText').innerText = '雲端資料已載入';
         } else {
           console.warn('雲端資料回傳非成功狀態，切換至展示備援模式', json.message);
+          connectionFallback = true;
+          updateConnectionBadge();
           loadMockEvents();
         }
       } catch (err) {
         console.error('GAS 連線異常:', err);
+        connectionFallback = true;
+        updateConnectionBadge();
         loadMockEvents();
       } finally {
         if (icon) icon.classList.remove('fa-spin');
@@ -895,6 +918,8 @@
     }
 
     function refreshData() {
+      connectionFallback = false;
+      updateConnectionBadge();
       const url = getActiveGasUrl();
       if (url !== 'DEMO_MODE') {
         fetchLiveEvents();
@@ -1617,13 +1642,15 @@
       const textarea = document.getElementById('aiOutputText');
 
       box.classList.remove('hidden');
-      label.innerText = '✨ 會議紀錄初稿草案 (Gemini AI 自動彙整)：';
+      const notes = window.prompt('請輸入已去識別化的實際討論筆記；留白只產生待補範本，不推測決議。', '');
+      if (notes === null) return;
+      label.innerText = '會議紀錄草稿（須依事實人工核定）：';
       textarea.value = 'AI 正在依據會議資訊與討論要點生成會議紀錄草稿...';
 
       const url = getActiveGasUrl();
-      if (url === 'DEMO_MODE') {
+      if (url === 'DEMO_MODE' || !notes.trim()) {
         setTimeout(() => {
-          textarea.value = `【桃園市立大溪國民中學 會議紀錄草稿】\n\n一、會議名稱：${activeEvent.title}\n二、開會時間：${activeEvent.date} ${activeEvent.startTime} ~ ${activeEvent.endTime}\n三、開會地點：${activeEvent.location}\n四、主辦處室：${activeEvent.department}　　主席：校長 / 召集人　紀錄：行政同仁\n五、出席人員：各處室主任、組長及業務承辦人員 (詳如簽到表)\n\n六、主席致詞：\n    感謝同仁準時出席，請針對今日提案務實討論並確立期程。\n\n七、各處室工作報告：\n    (一) ${activeEvent.department}報告：依學期進度提報工作成果與後續規劃。\n    (二) 補充事項：${activeEvent.description || '請相關組別落實會後追蹤管制。'}\n\n八、提案討論與決議事項：\n    案由一：${activeEvent.title} 核心推行計畫\n    說明：${activeEvent.description || '請相關處室落實細部配套。'}\n    決議：照案通過，請相關處室於兩週內完成細部配套並公告週知。\n\n九、臨時動議：無。\n十、散會\n\n※ 本紀錄草稿經由 Gemini 智慧行政助理自動彙整生成，承辦同仁可微調後陳核存檔。`;
+          textarea.value = `【待補範本／未呼叫 AI】\n會議名稱：${activeEvent.title}\n時間：${activeEvent.date} ${activeEvent.startTime} ~ ${activeEvent.endTime}\n地點：${activeEvent.location}\n出席人員：待補\n原始筆記：${notes || '待補'}\n發言與決議：待補\n追蹤期限：待補\n請承辦人依實際紀錄補齊並核定。`;
         }, 500);
         return;
       }
@@ -1632,11 +1659,11 @@
         const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'aiGenerateMinutes', meetingData: activeEvent })
+          body: JSON.stringify({ action: 'aiGenerateMinutes', event: activeEvent, notes })
         });
         const json = await res.json();
         if (json.status === 'success' && json.data) {
-          textarea.value = json.data.minutesDraft || '產出完成';
+          textarea.value = json.data.minutes || '未取得紀錄，請稍後重試。';
         } else {
           textarea.value = 'AI 產出失敗：' + (json.message || '請檢查 API Key');
         }
