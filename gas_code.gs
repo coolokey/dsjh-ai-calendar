@@ -793,6 +793,23 @@ function checkAdminAuth_(token, requireCustomPassword) {
   return { ok: true };
 }
 
+function buildAdminMetaPayload_() {
+  var sheet = getSheet();
+  var ss = sheet.getParent();
+  return {
+    hasGeminiApiKey: Boolean(getGeminiApiKey()),
+    geminiModel: getGeminiPreferredModel_(),
+    isDefaultAdminPassword: (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD),
+    spreadsheetUrl: ss ? ss.getUrl() : '',
+    spreadsheetName: ss ? ss.getName() : '',
+    sheetName: SHEET_NAME,
+    auditSheetName: AUDIT_SHEET_NAME,
+    adminSheetName: ADMIN_SHEET_NAME,
+    configSheetName: CONFIG_SHEET_NAME,
+    eventCount: Math.max(0, sheet.getLastRow() - 1)
+  };
+}
+
 function loginAdmin(password) {
   var cleanInput = String(password === undefined || password === null ? '' : password).trim();
   if (!cleanInput) {
@@ -811,13 +828,21 @@ function loginAdmin(password) {
     if (cache) {
       cache.put('ADMIN_SESSION_' + adminToken, 'ACTIVE', ADMIN_SESSION_EXPIRE_SEC);
     }
-    return {
-      status: 'success',
-      token: adminToken,
-      isDefault: (realPwd === DEFAULT_ADMIN_PASSWORD),
-      hasGeminiApiKey: Boolean(getGeminiApiKey()),
-      geminiModel: getGeminiPreferredModel_()
-    };
+    var isDefault = (realPwd === DEFAULT_ADMIN_PASSWORD);
+    if (isDefault) {
+      return {
+        status: 'success',
+        token: adminToken,
+        isDefault: true,
+        hasGeminiApiKey: Boolean(getGeminiApiKey()),
+        geminiModel: getGeminiPreferredModel_()
+      };
+    }
+    var meta = buildAdminMetaPayload_();
+    meta.status = 'success';
+    meta.token = adminToken;
+    meta.isDefault = false;
+    return meta;
   }
 
   var fail = recordLoginFailure_('admin', 'admin');
@@ -864,35 +889,22 @@ function changeAdminPassword(token, oldPwd, newPwd) {
       description: '管理者密碼已更新（不紀錄密碼明文）'
     });
     SpreadsheetApp.flush();
-    return {
-      status: 'success',
-      isDefaultAdminPassword: false,
-      message: '管理密碼修改成功，已同步寫入 Google 試算表「管理者名單」與「系統設定」！'
-    };
+    var meta = buildAdminMetaPayload_();
+    meta.status = 'success';
+    meta.message = '管理密碼修改成功，已同步寫入 Google 試算表「管理者名單」與「系統設定」！';
+    return meta;
   } finally {
     lock.releaseLock();
   }
 }
 
 function getAdminSettings(token) {
-  var auth = checkAdminAuth_(token, false);
+  var auth = checkAdminAuth_(token, true);
   if (!auth.ok) return { status: 'error', message: auth.message };
 
-  var sheet = getSheet();
-  var ss = sheet.getParent();
-  return {
-    status: 'success',
-    hasGeminiApiKey: Boolean(getGeminiApiKey()),
-    geminiModel: getGeminiPreferredModel_(),
-    isDefaultAdminPassword: (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD),
-    spreadsheetUrl: ss ? ss.getUrl() : '',
-    spreadsheetName: ss ? ss.getName() : '',
-    sheetName: SHEET_NAME,
-    auditSheetName: AUDIT_SHEET_NAME,
-    adminSheetName: ADMIN_SHEET_NAME,
-    configSheetName: CONFIG_SHEET_NAME,
-    eventCount: Math.max(0, sheet.getLastRow() - 1)
-  };
+  var meta = buildAdminMetaPayload_();
+  meta.status = 'success';
+  return meta;
 }
 
 function saveAdminSettings(token, newSettings) {
@@ -1233,19 +1245,14 @@ function doGet(e) {
       );
       responseData = { status: 'success', data: c };
     } else if (action === 'ping') {
+      // 資安隔離：未驗證管理者密碼前，公開 ping 僅回傳健康與分頁狀態，絕不曝露試算表 URL、API Key 或密碼
       var sheet = getSheet();
-      var ss = sheet.getParent();
-      var hasApiKey = Boolean(getGeminiApiKey());
-      var geminiModel = getGeminiPreferredModel_();
-      var isDefaultAdmin = (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD);
       responseData = {
         status: 'success',
         message: '校園智慧行事曆後端服務運行正常',
-        hasGeminiApiKey: hasApiKey,
-        geminiModel: geminiModel,
-        isDefaultAdminPassword: isDefaultAdmin,
-        spreadsheetUrl: ss ? ss.getUrl() : '',
-        spreadsheetName: ss ? ss.getName() : '',
+        hasGeminiApiKey: Boolean(getGeminiApiKey()),
+        geminiModel: getGeminiPreferredModel_(),
+        isDefaultAdminPassword: (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD),
         sheetName: SHEET_NAME,
         auditSheetName: AUDIT_SHEET_NAME,
         adminSheetName: ADMIN_SHEET_NAME,

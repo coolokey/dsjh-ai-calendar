@@ -176,7 +176,31 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   ]);
   assert.equal(sorted[0].startTime, '08:30');
 
-  // Backend Google Sheet metadata hydrates Header link, Setup Modal card & admin status badges safely
+  // Unauthenticated public status keeps Sheet URL & protected panels hidden, showing only safe badges
+  ctx.syncAdminConfigUi();
+  ctx.applyBackendSheetPayload(ctx.getActiveGasUrl(), {
+    status: 'success',
+    sheetName: '會議資料',
+    auditSheetName: '異動紀錄',
+    adminSheetName: '管理者名單',
+    configSheetName: '系統設定',
+    hasGeminiApiKey: true,
+    geminiModel: 'gemini-2.5-flash',
+    isDefaultAdminPassword: true,
+    eventCount: 1
+  });
+  assert.equal(elements.get('headerSheetLink').classList.contains('hidden'), true);
+  assert.equal(elements.get('headerSheetLink').href, '#');
+  assert.equal(elements.get('adminProtectedContent').classList.contains('hidden'), true);
+  assert.equal(elements.get('adminLoginBox').classList.contains('hidden'), false);
+  assert.equal(elements.get('setupSheetOpenBtn').href, '#');
+  assert.equal(elements.get('btnCopySheetUrl').disabled, true);
+  assert.match(elements.get('backendSheetMetaText').innerText, /會議資料.*異動紀錄.*管理者名單.*系統設定/);
+  assert.match(elements.get('adminConfigKeyBadge').innerText, /AI 金鑰就緒/);
+  assert.match(elements.get('adminConfigPwdBadge').innerText, /admin888/);
+
+  // After non-default admin login, Header Sheet link & protected settings unlock; logout re-locks immediately
+  vm.runInContext(`adminSession = { token: 'custom-admin-tok', isDefault: false };`, ctx);
   ctx.applyBackendSheetPayload(ctx.getActiveGasUrl(), {
     status: 'success',
     spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/test-sheet/edit',
@@ -187,16 +211,23 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
     configSheetName: '系統設定',
     hasGeminiApiKey: true,
     geminiModel: 'gemini-2.5-flash',
-    isDefaultAdminPassword: true,
+    isDefaultAdminPassword: false,
     eventCount: 1
   });
+  assert.equal(elements.get('adminProtectedContent').classList.contains('hidden'), false);
+  assert.equal(elements.get('adminLoginBox').classList.contains('hidden'), true);
+  assert.equal(elements.get('headerSheetLink').classList.contains('hidden'), false);
   assert.equal(elements.get('headerSheetLink').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
   assert.equal(elements.get('setupSheetOpenBtn').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
   assert.equal(elements.get('btnCopySheetUrl').disabled, false);
   assert.match(elements.get('backendSheetName').innerText, /校園智慧行事曆資料庫/);
-  assert.match(elements.get('backendSheetMetaText').innerText, /會議資料.*異動紀錄.*管理者名單.*系統設定/);
-  assert.match(elements.get('adminConfigKeyBadge').innerText, /AI 金鑰就緒/);
-  assert.match(elements.get('adminConfigPwdBadge').innerText, /admin888/);
+
+  ctx.logoutCalendarAdmin();
+  assert.equal(elements.get('adminProtectedContent').classList.contains('hidden'), true);
+  assert.equal(elements.get('headerSheetLink').classList.contains('hidden'), true);
+  assert.equal(elements.get('headerSheetLink').href, '#');
+  assert.equal(elements.get('setupSheetOpenBtn').href, '#');
+  assert.equal(elements.get('btnCopySheetUrl').disabled, true);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
@@ -356,11 +387,12 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
   assert.deepEqual(auditSheet._rows.slice(1).map(r => r[1]), ['新增預約', '修改排程', '刪除排程']);
   assert.equal(auditSheet._rows[2][3], '校務發展會議（改期）');
 
-  // ping reports spreadsheet URL, name, sheet names, and current count without leaking secrets
+  // public ping reports sheet names, key/password readiness flags & current count WITHOUT leaking spreadsheetUrl or secrets
   ctx.doGet({ parameter: { action: 'ping' } });
   const ping = getLastHttpJson();
   assert.equal(ping.status, 'success');
-  assert.equal(ping.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
+  assert.equal(ping.spreadsheetUrl, undefined);
+  assert.equal(ping.spreadsheetName, undefined);
   assert.equal(ping.sheetName, '會議資料');
   assert.equal(ping.auditSheetName, '異動紀錄');
   assert.equal(ping.adminSheetName, '管理者名單');
@@ -368,7 +400,7 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
   assert.equal(ping.hasGeminiApiKey, true);
   assert.equal(ping.isDefaultAdminPassword, true);
   assert.equal(ping.eventCount, 0);
-  assert.doesNotMatch(JSON.stringify(ping), /seed-key-123|admin888/);
+  assert.doesNotMatch(JSON.stringify(ping), /seed-key-123|admin888|docs\.google\.com\/spreadsheets/);
 });
 
 test('admin credentials and Gemini API key sync bidirectionally with spreadsheet and protect sensitive settings', () => {
@@ -388,20 +420,29 @@ test('admin credentials and Gemini API key sync bidirectionally with spreadsheet
   cfgSheet._rows[2][1] = 'AIzaDirectSheetEdit999';
   assert.equal(ctx.getGeminiApiKey(), 'AIzaDirectSheetEdit999');
 
-  // Login with default admin888 succeeds with isDefault=true, but cannot change API key before changing password
+  // Login with default admin888 succeeds with isDefault=true, omits spreadsheetUrl & blocks API/settings changes before changing password
   const loginRes = ctx.loginAdmin('admin888');
   assert.equal(loginRes.status, 'success');
   assert.equal(loginRes.isDefault, true);
+  assert.equal(loginRes.spreadsheetUrl, undefined);
+  assert.equal(ctx.getAdminSettings(loginRes.token).status, 'error');
   const blockedSave = ctx.saveAdminSettings(loginRes.token, { geminiApiKey: 'AIzaShouldFail' });
   assert.equal(blockedSave.status, 'error');
   assert.match(blockedSave.message, /預設密碼/);
 
-  // Changing admin password writes to 管理者名單, 系統設定, and ScriptProperties
+  // Changing admin password writes to 管理者名單, 系統設定, and ScriptProperties, and unlocks spreadsheetUrl
   const pwdRes = ctx.changeAdminPassword(loginRes.token, 'admin888', 'DaxiAdmin2026');
   assert.equal(pwdRes.status, 'success');
+  assert.equal(pwdRes.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
   assert.equal(adminSheet._rows[1][2], 'DaxiAdmin2026');
   assert.equal(cfgSheet._rows[1][1], 'DaxiAdmin2026');
   assert.equal(propsMap.get('ADMIN_PASSWORD'), 'DaxiAdmin2026');
+
+  // Re-logging in with custom password returns spreadsheetUrl & isDefault=false
+  const customLogin = ctx.loginAdmin('DaxiAdmin2026');
+  assert.equal(customLogin.status, 'success');
+  assert.equal(customLogin.isDefault, false);
+  assert.equal(customLogin.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
 
   // After changing password, admin can update GEMINI_API_KEY & GEMINI_MODEL and clear key securely
   const saveRes = ctx.saveAdminSettings(loginRes.token, { geminiApiKey: 'AIzaUpdatedFromUI777', geminiModel: 'gemini-2.0-flash' });
@@ -410,10 +451,11 @@ test('admin credentials and Gemini API key sync bidirectionally with spreadsheet
   assert.equal(cfgSheet._rows[3][1], 'gemini-2.0-flash');
   assert.equal(ctx.getGeminiApiKey(), 'AIzaUpdatedFromUI777');
 
-  // ping and getAdminSettings never leak raw key or password
+  // getAdminSettings returns spreadsheetUrl after custom auth and never leaks raw key or password
   ctx.doPost({ postData: { contents: JSON.stringify({ action: 'getAdminSettings', token: loginRes.token }) } });
   const adminStatus = getLastHttpJson();
   assert.equal(adminStatus.status, 'success');
+  assert.equal(adminStatus.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
   assert.equal(adminStatus.hasGeminiApiKey, true);
   assert.equal(adminStatus.isDefaultAdminPassword, false);
   assert.doesNotMatch(JSON.stringify(adminStatus), /AIzaUpdatedFromUI777|DaxiAdmin2026/);
