@@ -312,14 +312,9 @@
             </button>
           </div>
 
-          <!-- 分類下拉選單 (小螢幕快速切換，與下方圖例膠囊雙向同步) -->
+          <!-- 分類下拉選單 (小螢幕快速切換，依現有分類動態產生) -->
           <select id="categoryFilter" onchange="handleCategoryFilter(this.value)" class="md:hidden text-xs py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-700 font-semibold">
             <option value="ALL">全部分類</option>
-            <option value="全校會議">全校會議</option>
-            <option value="處室會議">處室會議</option>
-            <option value="教學研討">教學研討</option>
-            <option value="重大活動">重大活動</option>
-            <option value="其他">其他</option>
           </select>
 
           <!-- 模式切換鈕 (月 / 週 / 日 / 清單) -->
@@ -332,30 +327,15 @@
         </div>
       </div>
 
-      <!-- 桌機互動式分類色碼圖例與一鍵篩選膠囊列 -->
-      <div class="hidden md:flex items-center justify-between pt-2.5 border-t border-slate-100 text-xs">
+      <!-- 桌機互動式分類色碼圖例與一鍵篩選膠囊列 (動態對應自訂分類與配色) -->
+      <div class="hidden md:flex items-center justify-between pt-2.5 border-t border-slate-100 text-xs gap-3">
         <div id="legendFilterBar" class="flex flex-wrap items-center gap-1.5">
           <span class="text-[11px] font-bold text-slate-400 mr-1">會議分類圖例：</span>
           <button type="button" data-cat="ALL" onclick="handleCategoryFilter('ALL')" class="legend-chip px-2.5 py-1 rounded-full font-bold border transition cursor-pointer">
             全部排程
           </button>
-          <button type="button" data-cat="全校會議" onclick="handleCategoryFilter('全校會議')" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer">
-            <span class="w-2 h-2 rounded-full bg-blue-500"></span>全校會議
-          </button>
-          <button type="button" data-cat="處室會議" onclick="handleCategoryFilter('處室會議')" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer">
-            <span class="w-2 h-2 rounded-full bg-amber-500"></span>處室會議
-          </button>
-          <button type="button" data-cat="教學研討" onclick="handleCategoryFilter('教學研討')" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>教學研討
-          </button>
-          <button type="button" data-cat="重大活動" onclick="handleCategoryFilter('重大活動')" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer">
-            <span class="w-2 h-2 rounded-full bg-purple-500"></span>重大活動
-          </button>
-          <button type="button" data-cat="其他" onclick="handleCategoryFilter('其他')" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer">
-            <span class="w-2 h-2 rounded-full bg-slate-400"></span>其他
-          </button>
         </div>
-        <span class="text-[11px] text-slate-400">
+        <span class="text-[11px] text-slate-400 shrink-0">
           <i class="fa-regular fa-lightbulb text-amber-500 mr-1"></i>點擊日期格可直接預約，點擊會議標籤查看 AI 協作與細節
         </span>
       </div>
@@ -458,6 +438,10 @@
             <div><span class="text-slate-400 block text-[11px]">主辦處室</span><span id="resDept" class="font-bold text-slate-800">--</span></div>
             <div><span class="text-slate-400 block text-[11px]">分類</span><span id="resCat" class="font-bold text-slate-800">--</span></div>
           </div>
+          <div id="resParticipantsBox" class="hidden text-xs">
+            <span class="text-slate-400 text-[11px] block">參與單位</span>
+            <p id="resParticipants" class="font-semibold text-slate-800 mt-0.5">--</p>
+          </div>
           <div>
             <span class="text-slate-400 text-[11px] block">摘要與待辦</span>
             <p id="resDesc" class="text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-ai-100 mt-1 leading-relaxed">--</p>
@@ -530,18 +514,18 @@
     </div>
   </div>
 
-  <!-- ==================== 彈窗 3：預約/編輯會議表單 (含即時衝突雷達) ==================== -->
+  <!-- ==================== 彈窗 3：新增 / 修改會議 Modal ==================== -->
   <div id="addEventModal" class="fixed inset-0 bg-slate-950/55 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4 no-print" role="dialog" aria-modal="true" aria-labelledby="addModalHeaderTitle">
-    <div class="modal-panel bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
-      <div class="bg-brand-950 text-white px-6 py-4 flex items-center justify-between">
+    <div class="modal-panel bg-white rounded-2xl max-w-xl w-full shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+      <div class="bg-gradient-to-r from-[#1a3c6e] to-[#2a5298] text-white px-6 py-4 flex items-center justify-between">
         <div class="flex items-center gap-2.5">
-          <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-brand-300">
+          <div class="w-8 h-8 rounded-lg bg-white/15 flex items-center justify-center text-white">
             <i class="fa-solid fa-calendar-plus"></i>
           </div>
-          <h3 id="addModalHeaderTitle" class="font-bold text-base">登記預約會議</h3>
+          <h3 id="addModalHeaderTitle" class="font-bold text-base tracking-wide">新增會議 / 活動</h3>
         </div>
-        <button type="button" onclick="closeModal('addEventModal')" class="text-slate-300 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer" aria-label="關閉視窗">
-          <i class="fa-solid fa-xmark text-lg"></i>
+        <button type="button" onclick="closeModal('addEventModal')" class="w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center transition cursor-pointer" aria-label="關閉視窗">
+          <i class="fa-solid fa-xmark text-base"></i>
         </button>
       </div>
 
@@ -549,33 +533,21 @@
         <!-- 隱藏 ID (編輯模式用) -->
         <input type="hidden" id="formEditId" value="">
 
-        <!-- 會議名稱 -->
+        <!-- 1. 標題 -->
         <div>
-          <label for="formTitle" class="block text-xs font-bold text-slate-700 mb-1">會議名稱 <span class="text-rose-500">*</span></label>
-          <input type="text" id="formTitle" required placeholder="例：115學年度第1次課程發展委員會" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white transition">
+          <label for="formTitle" class="block text-xs font-bold text-slate-700 mb-1.5">標題 <span class="text-rose-500">*</span></label>
+          <input type="text" id="formTitle" required maxlength="100" placeholder="會議或活動名稱" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] transition">
         </div>
 
-        <!-- 日期與時段 -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <!-- 2. 日期與地點並排 -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
           <div>
-            <label for="formDate" class="block text-xs font-bold text-slate-700 mb-1">日期 <span class="text-rose-500">*</span></label>
-            <input type="date" id="formDate" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white tabular-nums">
+            <label for="formDate" class="block text-xs font-bold text-slate-700 mb-1.5">日期 <span class="text-rose-500">*</span></label>
+            <input type="date" id="formDate" required class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] tabular-nums">
           </div>
           <div>
-            <label for="formStartTime" class="block text-xs font-bold text-slate-700 mb-1">開始時間 <span class="text-rose-500">*</span></label>
-            <input type="time" id="formStartTime" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white tabular-nums">
-          </div>
-          <div>
-            <label for="formEndTime" class="block text-xs font-bold text-slate-700 mb-1">結束時間 <span class="text-rose-500">*</span></label>
-            <input type="time" id="formEndTime" required class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white tabular-nums">
-          </div>
-        </div>
-
-        <!-- 地點與主辦處室 (大溪國中專屬下拉選單 + 其他動態自訂) -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label for="formLocation" class="block text-xs font-bold text-slate-700 mb-1">會議地點 <span class="text-rose-500">*</span></label>
-            <select id="formLocation" required onchange="handleLocationChange()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+            <label for="formLocation" class="block text-xs font-bold text-slate-700 mb-1.5">地點 <span class="text-rose-500">*</span></label>
+            <select id="formLocation" required onchange="handleLocationChange()" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
               <option value="">請選擇地點...</option>
               <option value="學生活動中心">學生活動中心</option>
               <option value="行政大樓3F教師研習中心">行政大樓3F教師研習中心</option>
@@ -585,23 +557,83 @@
               <option value="圖書館">圖書館</option>
               <option value="校史室">校史室</option>
               <option value="新大樓1F視聽中心">新大樓1F視聽中心</option>
-              <option value="其他">其他 (自行輸入)</option>
+              <option value="其他">其他</option>
             </select>
-            <input type="text" id="formLocationOther" placeholder="請輸入地點名稱" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500">
+            <input type="text" id="formLocationOther" placeholder="請輸入地點名稱" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
           </div>
-          <div>
-            <label for="formDepartment" class="block text-xs font-bold text-slate-700 mb-1">主辦單位/處室 <span class="text-rose-500">*</span></label>
-            <select id="formDepartment" required onchange="handleDepartmentChange()" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
-              <option value="">請選擇單位...</option>
-              <option value="教務處">教務處</option>
-              <option value="學務處">學務處</option>
-              <option value="總務處">總務處</option>
-              <option value="輔導室">輔導室</option>
-              <option value="人事室">人事室</option>
-              <option value="科技中心">科技中心</option>
-              <option value="其他">其他 (自行輸入)</option>
-            </select>
-            <input type="text" id="formDepartmentOther" placeholder="請輸入單位名稱 (如：教務處教學組)" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500">
+        </div>
+
+        <!-- 3. 開會時間 (國中節次複選 + 自訂時間展開) -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <label class="block text-xs font-bold text-slate-700">開會時間 <span class="text-rose-500">*</span></label>
+            <span id="periodTimeSummary" class="text-[11px] font-semibold text-[#1a3c6e] bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full tabular-nums">請勾選開會節次或自訂時間</span>
+          </div>
+          <div id="periodCheckboxGroup" class="p-3.5 bg-slate-50/70 border border-slate-200 rounded-xl space-y-2.5">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-3 gap-y-2 text-xs text-slate-700">
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt0" name="formPeriod" value="朝會" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">朝會 (08:00-08:20)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt1" name="formPeriod" value="第1節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第1節 (08:30-09:15)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt2" name="formPeriod" value="第2節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第2節 (09:25-10:10)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt3" name="formPeriod" value="第3節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第3節 (10:20-11:05)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt4" name="formPeriod" value="第4節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第4節 (11:15-12:00)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt5" name="formPeriod" value="午休" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">午休 (12:00-13:05)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt6" name="formPeriod" value="第5節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第5節 (13:10-13:55)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt7" name="formPeriod" value="第6節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第6節 (14:05-14:50)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt8" name="formPeriod" value="第7節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第7節 (15:00-15:45)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none hover:text-slate-950">
+                <input type="checkbox" id="periodOpt9" name="formPeriod" value="第8節" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span class="tabular-nums">第8節 (15:55-16:40)</span>
+              </label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none font-semibold text-[#1a3c6e] hover:text-[#2a5298]">
+                <input type="checkbox" id="periodCustomCheckbox" value="custom" onchange="handlePeriodSelectionChange()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer">
+                <span>自訂時間</span>
+              </label>
+            </div>
+
+            <!-- 不連續節次溫馨提示 -->
+            <div id="periodGapWarning" class="hidden text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5 leading-relaxed">
+              <i class="fa-solid fa-circle-info text-amber-600 mt-0.5 shrink-0"></i>
+              <span>您勾選了不連續節次，系統將依首尾區間鎖定場地；若中間節次無須使用場地，建議分兩筆預約以免中間時段被占用。</span>
+            </div>
+
+            <!-- 勾選「自訂時間」時展開開始與結束時間欄 -->
+            <div id="customTimeWrap" class="hidden pt-2.5 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="formStartTime" class="block text-[11px] font-bold text-slate-600 mb-1">開始時間</label>
+                <input type="time" id="formStartTime" class="w-full px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] tabular-nums">
+              </div>
+              <div>
+                <label for="formEndTime" class="block text-[11px] font-bold text-slate-600 mb-1">結束時間</label>
+                <input type="time" id="formEndTime" class="w-full px-3 py-1.5 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] tabular-nums">
+              </div>
+            </div>
           </div>
         </div>
 
@@ -609,36 +641,94 @@
         <div id="liveConflictRadar" class="p-3 rounded-xl border transition-all duration-200 text-xs flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 bg-slate-50 border-slate-200 text-slate-600">
           <div class="flex items-center gap-2 min-w-0">
             <span id="radarDot" class="w-2.5 h-2.5 rounded-full bg-slate-400 shrink-0"></span>
-            <span id="radarText" class="font-medium leading-relaxed">請選取日期、時段與地點以啟動即時場地衝突偵測</span>
+            <span id="radarText" class="font-medium leading-relaxed">請選取日期、地點與開會節次以啟動即時場地衝突偵測</span>
           </div>
           <button type="button" id="btnAutoRecommend" onclick="recommendAvailableSlot()" class="hidden shrink-0 text-[11px] font-bold text-ai-700 hover:text-ai-800 bg-ai-50 hover:bg-ai-100 border border-ai-200 px-2.5 py-1 rounded-lg transition cursor-pointer">
             <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>推薦空檔
           </button>
         </div>
 
-        <!-- 分類 -->
+        <!-- 4. 申請單位 (主辦單位) 獨立一整行 -->
         <div>
-          <label for="formCategory" class="block text-xs font-bold text-slate-700 mb-1">活動分類</label>
-          <select id="formCategory" class="w-full px-3 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
-            <option value="全校會議">全校會議</option>
-            <option value="處室會議">處室會議</option>
-            <option value="教學研討">教學研討</option>
-            <option value="重大活動">重大活動</option>
+          <label for="formDepartment" class="block text-xs font-bold text-slate-700 mb-1.5">申請單位 (主辦單位) <span class="text-rose-500">*</span></label>
+          <select id="formDepartment" required onchange="handleDepartmentChange()" class="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
+            <option value="">請選擇單位...</option>
+            <option value="教務處">教務處</option>
+            <option value="學務處">學務處</option>
+            <option value="總務處">總務處</option>
+            <option value="輔導室">輔導室</option>
+            <option value="人事室">人事室</option>
+            <option value="科技中心">科技中心</option>
             <option value="其他">其他</option>
           </select>
+          <input type="text" id="formDepartmentOther" placeholder="請輸入單位名稱" maxlength="60" class="hidden w-full mt-2 px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
         </div>
 
-        <!-- 備註說明 -->
-        <div>
-          <label for="formDescription" class="block text-xs font-bold text-slate-700 mb-1">備註說明 (議程重點或需攜帶資料)</label>
-          <textarea id="formDescription" rows="2" placeholder="選填，簡述會議目的或與會注意事項" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white"></textarea>
+        <!-- 5. 分類與自訂配色（選填） -->
+        <div class="space-y-2">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label for="formCategory" class="block text-xs font-bold text-slate-700">分類與自訂配色（選填）</label>
+            <div class="flex flex-wrap items-center gap-1 text-[10px]">
+              <button type="button" onclick="applyCategoryPreset('行政', '#dbeafe', '#1e40af')" class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 font-semibold cursor-pointer">行政</button>
+              <button type="button" onclick="applyCategoryPreset('全校會議', '#dbeafe', '#1e40af')" class="px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200 hover:bg-blue-100 font-semibold cursor-pointer">全校會議</button>
+              <button type="button" onclick="applyCategoryPreset('處室會議', '#fef3c7', '#92400e')" class="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 font-semibold cursor-pointer">處室會議</button>
+              <button type="button" onclick="applyCategoryPreset('教學研討', '#d1fae5', '#065f46')" class="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-emerald-100 font-semibold cursor-pointer">教學研討</button>
+              <button type="button" onclick="applyCategoryPreset('重大活動', '#f3e8ff', '#6b21a8')" class="px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 hover:bg-purple-100 font-semibold cursor-pointer">重大活動</button>
+            </div>
+          </div>
+          <div class="flex flex-wrap sm:flex-nowrap items-center gap-2.5">
+            <input type="text" id="formCategory" maxlength="30" oninput="syncCategoryPreview()" placeholder="如：行政、教學、親師" class="flex-1 min-w-[160px] px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
+            <div class="flex items-center gap-2 shrink-0">
+              <label for="formCatBg" class="text-xs font-semibold text-slate-600">底色</label>
+              <input type="color" id="formCatBg" value="#dbeafe" oninput="syncCategoryPreview()" class="w-9 h-9 p-0.5 bg-white border border-slate-300 rounded-lg cursor-pointer" title="選擇標籤底色">
+              <label for="formCatText" class="text-xs font-semibold text-slate-600">字色</label>
+              <input type="color" id="formCatText" value="#1e40af" oninput="syncCategoryPreview()" class="w-9 h-9 p-0.5 bg-white border border-slate-300 rounded-lg cursor-pointer" title="選擇文字顏色">
+            </div>
+          </div>
+          <div class="px-3 py-2 bg-slate-100/80 border border-slate-200/80 rounded-xl flex items-center gap-2 text-xs text-slate-500">
+            <span class="font-medium">即時配色預覽：</span>
+            <span id="colorPreviewPill" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border" style="background-color:#dbeafe;color:#1e40af;border-color:rgba(30,64,175,0.22);">
+              <span id="colorPreviewDot" class="w-2 h-2 rounded-full" style="background-color:#1e40af;"></span>
+              <span id="colorPreviewLabel">行政</span>
+            </span>
+          </div>
         </div>
 
-        <!-- 刪除/修改管理密碼 -->
+        <!-- 6. 參與單位（選填） -->
         <div>
-          <label for="formPassword" class="block text-xs font-bold text-slate-700 mb-1">安全管理密碼 (SHA-256 雜湊防護)</label>
-          <input type="password" id="formPassword" placeholder="日後如需修改或取消此會議時驗證使用" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
-          <p id="formPasswordHint" class="text-[11px] text-slate-400 mt-1">※ 若未填寫密碼，日後將允許同仁直接更新或取消此筆排程</p>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">參與單位（選填）</label>
+          <div id="participantsCheckboxGroup" class="p-3.5 bg-white border border-slate-200 rounded-xl space-y-2.5">
+            <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-x-3 gap-y-2 text-xs text-slate-700">
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt0" name="formParticipant" value="教務處" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>教務處</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt1" name="formParticipant" value="學務處" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>學務處</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt2" name="formParticipant" value="總務處" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>總務處</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt3" name="formParticipant" value="輔導室" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>輔導室</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt4" name="formParticipant" value="人事室" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>人事室</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt5" name="formParticipant" value="科技中心" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>科技中心</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt6" name="formParticipant" value="七年級導師" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>七年級導師</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt7" name="formParticipant" value="八年級導師" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>八年級導師</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt8" name="formParticipant" value="九年級導師" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>九年級導師</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none"><input type="checkbox" id="partOpt9" name="formParticipant" value="專任教師" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>專任教師</span></label>
+              <label class="inline-flex items-center gap-2 cursor-pointer select-none font-semibold text-slate-700"><input type="checkbox" id="partOtherCheckbox" value="其他" onchange="handleParticipantsOtherToggle()" class="w-4 h-4 rounded border-slate-300 text-[#1a3c6e] focus:ring-[#2a5298] cursor-pointer"><span>其他</span></label>
+            </div>
+            <input type="text" id="formParticipantsOther" placeholder="請輸入其他參與單位 (多個請用逗號分隔)" maxlength="100" class="hidden w-full px-3 py-1.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] focus:bg-white">
+          </div>
+        </div>
+
+        <!-- 7. 設定密碼（必填） -->
+        <div>
+          <label for="formPassword" id="formPasswordLabel" class="block text-xs font-bold text-slate-700 mb-1.5">設定密碼 <span id="formPasswordRequiredStar" class="text-rose-500">*</span></label>
+          <input type="password" id="formPassword" required maxlength="50" placeholder="設定此筆資料的密碼" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
+          <p id="formPasswordHint" class="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
+            <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+            <span>請牢記此密碼以供日後修改或刪除驗證；若忘記密碼可聯繫系統管理者覆寫處理。</span>
+          </p>
+        </div>
+
+        <!-- 8. 說明備註（選填） -->
+        <div>
+          <label for="formDescription" class="block text-xs font-bold text-slate-700 mb-1.5">說明備註（選填）</label>
+          <textarea id="formDescription" rows="3" placeholder="詳細說明、注意事項等" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]"></textarea>
         </div>
 
         <!-- 後端衝突錯誤警告提示框 -->
@@ -648,9 +738,9 @@
         </div>
 
         <!-- 按鈕 -->
-        <div class="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
-          <button type="button" onclick="closeModal('addEventModal')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl text-sm font-semibold cursor-pointer transition">取消</button>
-          <button type="submit" id="btnSubmitAdd" class="px-5 py-2 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-sm font-bold shadow-md shadow-brand-600/20 transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">確認預約</button>
+        <div class="pt-3 flex items-center justify-end gap-2.5 border-t border-slate-200">
+          <button type="button" onclick="closeModal('addEventModal')" class="px-4 py-2 text-slate-600 border border-slate-300 hover:bg-slate-100 rounded-xl text-sm font-semibold cursor-pointer transition">取消</button>
+          <button type="submit" id="btnSubmitAdd" class="px-5 py-2 bg-gradient-to-r from-[#1a3c6e] to-[#2a5298] hover:opacity-95 text-white rounded-xl text-sm font-bold shadow-md transition cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed">確認新增</button>
         </div>
       </form>
     </div>
@@ -668,14 +758,15 @@
 
       <div class="p-6 overflow-y-auto space-y-4 custom-scrollbar text-sm">
         <div class="space-y-2.5 pb-4 border-b border-slate-200">
-          <div class="flex items-center gap-2">
-            <span id="detailBadgeCat" class="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-bold">全校會議</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <span id="detailBadgeCat" class="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-xs rounded-full font-bold border">行政</span>
             <span id="detailDept" class="text-xs font-bold text-slate-500">教務處</span>
           </div>
           <h4 id="detailTitle" class="text-lg font-black text-slate-900 leading-snug">會議名稱</h4>
           <div class="text-slate-600 text-xs space-y-1.5 pt-1">
-            <p class="flex items-center gap-2 tabular-nums"><i class="fa-regular fa-clock w-4 text-center text-brand-600"></i><span id="detailDateTime" class="font-semibold">--</span></p>
+            <p class="flex flex-wrap items-center gap-2 tabular-nums"><i class="fa-regular fa-clock w-4 text-center text-brand-600"></i><span id="detailDateTime" class="font-semibold">--</span><span id="detailPeriodBadge" class="hidden px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 font-bold border border-blue-100"></span></p>
             <p class="flex items-center gap-2"><i class="fa-solid fa-location-dot w-4 text-center text-rose-500"></i><span id="detailLocation" class="font-semibold">--</span></p>
+            <p id="detailParticipantsRow" class="hidden flex items-start gap-2"><i class="fa-solid fa-users w-4 text-center text-emerald-600 mt-0.5"></i><span id="detailParticipants" class="font-medium text-slate-700 leading-relaxed">--</span></p>
           </div>
           <div id="detailDescBox" class="bg-slate-50 p-3 rounded-xl border border-slate-200/80 text-xs text-slate-700 mt-2">
             <span class="font-bold text-slate-500 block mb-1">備註說明：</span>
@@ -976,8 +1067,8 @@
       </div>
       <div class="space-y-1.5">
         <label for="deleteInputPassword" class="block text-xs font-bold text-slate-700">管理密碼驗證</label>
-        <input type="password" id="deleteInputPassword" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); executeDeleteEvent();}" placeholder="若建立時無設定密碼可留空" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono">
-        <p class="text-[11px] text-slate-400">※ 可輸入建立時之會議密碼，或已自訂之試算表「管理者名單」管理密碼。刪除後將永久移除。</p>
+        <input type="password" id="deleteInputPassword" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); executeDeleteEvent();}" placeholder="請輸入建立此會議時的密碼（或管理者密碼）" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono">
+        <p class="text-[11px] text-slate-400">※ 請輸入建立時設定之會議密碼，或已自訂之試算表「管理者名單」管理密碼。刪除後將永久移除。</p>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
         <button type="button" onclick="closeModal('deleteConfirmModal')" class="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold cursor-pointer">取消</button>
@@ -1086,7 +1177,8 @@
 
     // ── 初始化 ────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
-      syncLegendChips();
+      buildDynamicCategoryLegend();
+      syncCategoryPreview();
       setupLiveConflictListeners();
       // 立即繪製當前月份骨架，避免載入時閃爍空白
       renderCalendar();
@@ -1278,6 +1370,7 @@
           eventsData = Array.isArray(json.data) ? json.data : [];
           hasFetchError = false;
           updateConnectionBadge('connected');
+          buildDynamicCategoryLegend();
           if (!backendSheetInfo.loadedForGasUrl || backendSheetInfo.loadedForGasUrl !== url) {
             fetchBackendSheetMeta(url);
           } else {
@@ -1596,21 +1689,28 @@
               ${dayEvents.length > 0 ? `
                 <button type="button" onclick="event.stopPropagation(); jumpToDateInDayView('${thisDateStr}')" class="w-full py-1 px-1 rounded-lg bg-brand-50/90 border border-brand-200/80 hover:bg-brand-100 flex flex-col items-center gap-1 cursor-pointer transition" title="檢視 ${thisDateStr} 共 ${dayEvents.length} 場會議">
                   <div class="flex flex-wrap justify-center gap-0.5">
-                    ${dayEvents.slice(0, 4).map(e => `<span class="w-1.5 h-1.5 rounded-full ${getDotColor(e.category)}"></span>`).join('')}
+                    ${dayEvents.slice(0, 4).map(e => {
+                      const t = getCategoryTheme(e.category, e.categoryBg, e.categoryText);
+                      return `<span class="w-1.5 h-1.5 rounded-full" style="background-color:${t.text};"></span>`;
+                    }).join('')}
                   </div>
                   <span class="text-[10px] font-bold text-brand-800 leading-none tabular-nums">${dayEvents.length} 場</span>
                 </button>
               ` : ''}
             </div>
 
-            <!-- 電腦版：左側色條會議膠囊卡片 -->
+            <!-- 電腦版：左側色條會議膠囊卡片 (支援自訂底色與字色) -->
             <div class="hidden sm:block flex-1 space-y-1 overflow-y-auto max-h-[88px] custom-scrollbar pr-0.5">
-              ${dayEvents.map(e => `
-                <div data-event-id="${escapeHtml(e.id)}" onclick="event.stopPropagation(); openEventDetail(this.dataset.eventId)" class="px-1.5 py-1 rounded-md text-[11px] font-medium truncate flex items-center gap-1.5 border border-l-[3px] ${getEventCardClass(e.category)} hover:shadow-sm hover:-translate-y-[0.5px] transition-all cursor-pointer" title="${escapeHtml(e.startTime)}~${escapeHtml(e.endTime)} ${escapeHtml(e.title)} (${escapeHtml(e.location)})">
-                  <span class="tabular-nums font-bold opacity-85 shrink-0">${escapeHtml(e.startTime)}</span>
-                  <span class="truncate font-semibold">${escapeHtml(e.title)}</span>
-                </div>
-              `).join('')}
+              ${dayEvents.map(e => {
+                const t = getCategoryTheme(e.category, e.categoryBg, e.categoryText);
+                const tip = `${e.periods ? `[${e.periods}] ` : ''}${e.startTime}~${e.endTime} ${e.title} (${e.location})${e.participants ? `｜參與：${e.participants}` : ''}`;
+                return `
+                  <div data-event-id="${escapeHtml(e.id)}" onclick="event.stopPropagation(); openEventDetail(this.dataset.eventId)" class="px-1.5 py-1 rounded-md text-[11px] font-medium truncate flex items-center gap-1.5 border border-l-[3px] hover:shadow-sm hover:-translate-y-[0.5px] transition-all cursor-pointer" style="background-color:${t.bg};color:${t.text};border-color:${hexToRgba(t.text, 0.22)};border-left-color:${t.text};" title="${escapeHtml(tip)}">
+                    <span class="tabular-nums font-bold opacity-85 shrink-0">${escapeHtml(e.startTime)}</span>
+                    <span class="truncate font-semibold">${escapeHtml(e.title)}</span>
+                  </div>
+                `;
+              }).join('')}
             </div>
           </div>
         `;
@@ -1666,14 +1766,17 @@
                 const dayEvents = getDayEventsSorted(dStr);
                 return `
                   <div class="p-2 space-y-2 ${isToday ? 'bg-brand-50/20' : 'bg-white'} hover:bg-slate-50/70 transition cursor-pointer flex flex-col justify-start group" onclick="quickAddDate('${dStr}')">
-                    ${dayEvents.map(e => `
-                      <div data-event-id="${escapeHtml(e.id)}" onclick="event.stopPropagation(); openEventDetail(this.dataset.eventId)" class="p-2.5 rounded-xl border border-l-4 text-xs ${getEventCardClass(e.category)} space-y-1 shadow-sm hover:shadow transition-all">
-                        <div class="font-bold line-clamp-2 leading-snug text-slate-900">${escapeHtml(e.title)}</div>
-                        <div class="text-[11px] font-semibold opacity-90 flex items-center gap-1 tabular-nums"><i class="fa-regular fa-clock"></i> ${escapeHtml(e.startTime)}~${escapeHtml(e.endTime)}</div>
-                        <div class="text-[11px] text-slate-600 flex items-center gap-1 truncate"><i class="fa-solid fa-location-dot shrink-0"></i> <span class="truncate">${escapeHtml(e.location)}</span></div>
-                        <div class="text-[10px] font-bold text-slate-500">${escapeHtml(e.department)}</div>
-                      </div>
-                    `).join('')}
+                    ${dayEvents.map(e => {
+                      const t = getCategoryTheme(e.category, e.categoryBg, e.categoryText);
+                      return `
+                        <div data-event-id="${escapeHtml(e.id)}" onclick="event.stopPropagation(); openEventDetail(this.dataset.eventId)" class="p-2.5 rounded-xl border border-l-4 text-xs space-y-1 shadow-sm hover:shadow transition-all" style="background-color:${hexToRgba(t.bg, 0.72)};border-color:${hexToRgba(t.text, 0.24)};border-left-color:${t.text};">
+                          <div class="font-bold line-clamp-2 leading-snug text-slate-900">${escapeHtml(e.title)}</div>
+                          <div class="text-[11px] font-semibold opacity-95 flex items-center gap-1 tabular-nums" style="color:${t.text};"><i class="fa-regular fa-clock"></i> ${escapeHtml(e.startTime)}~${escapeHtml(e.endTime)}${e.periods ? ` <span class="text-[10px] opacity-80">(${escapeHtml(e.periods)})</span>` : ''}</div>
+                          <div class="text-[11px] text-slate-600 flex items-center gap-1 truncate"><i class="fa-solid fa-location-dot shrink-0"></i> <span class="truncate">${escapeHtml(e.location)}</span></div>
+                          <div class="text-[10px] font-bold text-slate-500 truncate">${escapeHtml(e.department)}${e.participants ? ` · ${escapeHtml(e.participants)}` : ''}</div>
+                        </div>
+                      `;
+                    }).join('')}
                     <div class="pt-2 opacity-0 group-hover:opacity-100 transition text-center text-[11px] font-semibold text-brand-600">
                       <i class="fa-solid fa-plus mr-0.5"></i>預約此日
                     </div>
@@ -1714,29 +1817,34 @@
                 <p class="text-sm font-bold text-slate-600">本日目前尚無任何會議排程</p>
                 <p class="text-xs text-slate-400">全校各場地時段皆空閒，歡迎點選右上方按鈕快速預約。</p>
               </div>
-            ` : dayEvents.map(e => `
-              <div data-event-id="${escapeHtml(e.id)}" onclick="openEventDetail(this.dataset.eventId)" class="p-4 rounded-2xl border border-slate-200 border-l-4 ${getLeftBorderClass(e.category)} bg-white flex items-center justify-between gap-4 hover:shadow-md transition-all cursor-pointer group">
-                <div class="flex items-start sm:items-center gap-4 min-w-0 flex-1">
-                  <div class="text-left sm:text-center sm:min-w-[74px] shrink-0 tabular-nums">
-                    <div class="text-sm sm:text-base font-black text-slate-900">${escapeHtml(e.startTime)}</div>
-                    <div class="text-[11px] font-medium text-slate-400">~ ${escapeHtml(e.endTime)}</div>
-                  </div>
-                  <div class="w-px h-10 bg-slate-200 hidden sm:block shrink-0"></div>
-                  <div class="space-y-1 min-w-0 flex-1">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${getDotColor(e.category)} text-white">${escapeHtml(e.category)}</span>
-                      <span class="text-xs font-bold text-slate-600">${escapeHtml(e.department)}</span>
+            ` : dayEvents.map(e => {
+              const t = getCategoryTheme(e.category, e.categoryBg, e.categoryText);
+              return `
+                <div data-event-id="${escapeHtml(e.id)}" onclick="openEventDetail(this.dataset.eventId)" class="p-4 rounded-2xl border border-slate-200 border-l-4 bg-white flex items-center justify-between gap-4 hover:shadow-md transition-all cursor-pointer group" style="border-left-color:${t.text};">
+                  <div class="flex items-start sm:items-center gap-4 min-w-0 flex-1">
+                    <div class="text-left sm:text-center sm:min-w-[82px] shrink-0 tabular-nums">
+                      <div class="text-sm sm:text-base font-black text-slate-900">${escapeHtml(e.startTime)}</div>
+                      <div class="text-[11px] font-medium text-slate-400">~ ${escapeHtml(e.endTime)}</div>
+                      ${e.periods ? `<div class="mt-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 inline-block max-w-[96px] truncate">${escapeHtml(e.periods)}</div>` : ''}
                     </div>
-                    <h4 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">${escapeHtml(e.title)}</h4>
-                    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
-                      <span class="inline-flex items-center gap-1"><i class="fa-solid fa-location-dot text-rose-500"></i>${escapeHtml(e.location)}</span>
-                      ${e.description ? `<span class="text-slate-400 truncate max-w-md">${escapeHtml(e.description)}</span>` : ''}
+                    <div class="w-px h-10 bg-slate-200 hidden sm:block shrink-0"></div>
+                    <div class="space-y-1 min-w-0 flex-1">
+                      <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border" style="background-color:${t.bg};color:${t.text};border-color:${hexToRgba(t.text, 0.22)};">${escapeHtml(e.category)}</span>
+                        <span class="text-xs font-bold text-slate-600">${escapeHtml(e.department)}</span>
+                        ${e.participants ? `<span class="text-[11px] text-slate-500 truncate max-w-xs"><i class="fa-solid fa-users text-emerald-600 mr-1"></i>${escapeHtml(e.participants)}</span>` : ''}
+                      </div>
+                      <h4 class="text-sm sm:text-base font-extrabold text-slate-900 truncate">${escapeHtml(e.title)}</h4>
+                      <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                        <span class="inline-flex items-center gap-1"><i class="fa-solid fa-location-dot text-rose-500"></i>${escapeHtml(e.location)}</span>
+                        ${e.description ? `<span class="text-slate-400 truncate max-w-md">${escapeHtml(e.description)}</span>` : ''}
+                      </div>
                     </div>
                   </div>
+                  <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-brand-600 group-hover:translate-x-0.5 transition shrink-0"></i>
                 </div>
-                <i class="fa-solid fa-chevron-right text-slate-300 group-hover:text-brand-600 group-hover:translate-x-0.5 transition shrink-0"></i>
-              </div>
-            `).join('')}
+              `;
+            }).join('')}
           </div>
         </div>
       `;
@@ -1781,26 +1889,35 @@
             <tbody class="divide-y divide-slate-100">
               ${filtered.length === 0 ? `
                 <tr><td colspan="8" class="text-center p-14 text-slate-400">無符合目前篩選條件的會議紀錄</td></tr>
-              ` : filtered.map(e => `
-                <tr data-event-id="${escapeHtml(e.id)}" onclick="openEventDetail(this.dataset.eventId)" class="hover:bg-brand-50/30 transition cursor-pointer group">
-                  <td class="p-3.5 whitespace-nowrap">${getEventTimelineStatusBadge(e, todayStr, nowHHMM)}</td>
-                  <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap tabular-nums">${escapeHtml(e.date)}</td>
-                  <td class="p-3.5 font-bold text-brand-700 whitespace-nowrap tabular-nums">${escapeHtml(e.startTime)} ~ ${escapeHtml(e.endTime)}</td>
-                  <td class="p-3.5 font-bold text-slate-900 max-w-xs truncate">${escapeHtml(e.title)}</td>
-                  <td class="p-3.5 text-slate-700 whitespace-nowrap">${escapeHtml(e.location)}</td>
-                  <td class="p-3.5 text-slate-600 whitespace-nowrap font-medium">${escapeHtml(e.department)}</td>
-                  <td class="p-3.5 whitespace-nowrap">
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border ${getBadgeClass(e.category)}">
-                      ${escapeHtml(e.category)}
-                    </span>
-                  </td>
-                  <td class="p-3.5 text-center whitespace-nowrap">
-                    <span class="text-brand-600 group-hover:text-brand-800 font-bold inline-flex items-center gap-1">
-                      開啟 <i class="fa-solid fa-chevron-right text-[10px]"></i>
-                    </span>
-                  </td>
-                </tr>
-              `).join('')}
+              ` : filtered.map(e => {
+                const t = getCategoryTheme(e.category, e.categoryBg, e.categoryText);
+                return `
+                  <tr data-event-id="${escapeHtml(e.id)}" onclick="openEventDetail(this.dataset.eventId)" class="hover:bg-brand-50/30 transition cursor-pointer group">
+                    <td class="p-3.5 whitespace-nowrap">${getEventTimelineStatusBadge(e, todayStr, nowHHMM)}</td>
+                    <td class="p-3.5 font-bold text-slate-800 whitespace-nowrap tabular-nums">${escapeHtml(e.date)}</td>
+                    <td class="p-3.5 whitespace-nowrap tabular-nums">
+                      <div class="font-bold text-brand-700">${escapeHtml(e.startTime)} ~ ${escapeHtml(e.endTime)}</div>
+                      ${e.periods ? `<div class="text-[10px] font-semibold text-slate-500">${escapeHtml(e.periods)}</div>` : ''}
+                    </td>
+                    <td class="p-3.5 font-bold text-slate-900 max-w-xs truncate">${escapeHtml(e.title)}</td>
+                    <td class="p-3.5 text-slate-700 whitespace-nowrap">${escapeHtml(e.location)}</td>
+                    <td class="p-3.5 text-slate-600 max-w-[200px]">
+                      <div class="font-medium whitespace-nowrap">${escapeHtml(e.department)}</div>
+                      ${e.participants ? `<div class="text-[10px] text-slate-400 truncate">參與：${escapeHtml(e.participants)}</div>` : ''}
+                    </td>
+                    <td class="p-3.5 whitespace-nowrap">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border" style="background-color:${t.bg};color:${t.text};border-color:${hexToRgba(t.text, 0.22)};">
+                        ${escapeHtml(e.category)}
+                      </span>
+                    </td>
+                    <td class="p-3.5 text-center whitespace-nowrap">
+                      <span class="text-brand-600 group-hover:text-brand-800 font-bold inline-flex items-center gap-1">
+                        開啟 <i class="fa-solid fa-chevron-right text-[10px]"></i>
+                      </span>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -1808,40 +1925,59 @@
       container.innerHTML = html;
     }
 
-    // ── 分類色彩輔助工具 ──────────────────────────────────────
-    function getBadgeClass(cat) {
-      if (cat === '全校會議') return 'bg-blue-50 border-blue-200 text-blue-800';
-      if (cat === '教學研討') return 'bg-emerald-50 border-emerald-200 text-emerald-800';
-      if (cat === '處室會議') return 'bg-amber-50 border-amber-200 text-amber-800';
-      if (cat === '重大活動') return 'bg-purple-50 border-purple-200 text-purple-800';
-      return 'bg-slate-50 border-slate-200 text-slate-700';
+    // ── 分類與節次／參與單位共用設定與配色工具 ────────────────
+    const CATEGORY_PRESETS = {
+      '行政': { bg: '#dbeafe', text: '#1e40af' },
+      '全校會議': { bg: '#dbeafe', text: '#1e40af' },
+      '處室會議': { bg: '#fef3c7', text: '#92400e' },
+      '教學研討': { bg: '#d1fae5', text: '#065f46' },
+      '重大活動': { bg: '#f3e8ff', text: '#6b21a8' },
+      '親師': { bg: '#ffe4e6', text: '#9f1239' },
+      '其他': { bg: '#f1f5f9', text: '#334155' }
+    };
+
+    const SCHOOL_PERIODS = [
+      { label: '朝會', start: '08:00', end: '08:20' },
+      { label: '第1節', start: '08:30', end: '09:15' },
+      { label: '第2節', start: '09:25', end: '10:10' },
+      { label: '第3節', start: '10:20', end: '11:05' },
+      { label: '第4節', start: '11:15', end: '12:00' },
+      { label: '午休', start: '12:00', end: '13:05' },
+      { label: '第5節', start: '13:10', end: '13:55' },
+      { label: '第6節', start: '14:05', end: '14:50' },
+      { label: '第7節', start: '15:00', end: '15:45' },
+      { label: '第8節', start: '15:55', end: '16:40' }
+    ];
+
+    const PARTICIPANT_UNITS = [
+      '教務處', '學務處', '總務處', '輔導室', '人事室', '科技中心',
+      '七年級導師', '八年級導師', '九年級導師', '專任教師'
+    ];
+
+    function sanitizeHexColor(hex) {
+      const s = String(hex || '').trim();
+      return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : '';
     }
 
-    function getEventCardClass(cat) {
-      if (cat === '全校會議') return 'bg-blue-50/90 border-blue-200 border-l-blue-600 text-blue-900';
-      if (cat === '教學研討') return 'bg-emerald-50/90 border-emerald-200 border-l-emerald-600 text-emerald-900';
-      if (cat === '處室會議') return 'bg-amber-50/90 border-amber-200 border-l-amber-500 text-amber-900';
-      if (cat === '重大活動') return 'bg-purple-50/90 border-purple-200 border-l-purple-600 text-purple-900';
-      return 'bg-slate-50 border-slate-200 border-l-slate-400 text-slate-800';
+    function hexToRgba(hex, alpha = 0.25) {
+      const h = sanitizeHexColor(hex);
+      if (!h) return `rgba(30, 64, 175, ${alpha})`;
+      const r = parseInt(h.slice(1, 3), 16);
+      const g = parseInt(h.slice(3, 5), 16);
+      const b = parseInt(h.slice(5, 7), 16);
+      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
     }
 
-    function getLeftBorderClass(cat) {
-      if (cat === '全校會議') return 'border-l-blue-600';
-      if (cat === '教學研討') return 'border-l-emerald-600';
-      if (cat === '處室會議') return 'border-l-amber-500';
-      if (cat === '重大活動') return 'border-l-purple-600';
-      return 'border-l-slate-400';
+    function getCategoryTheme(category, customBg = '', customText = '') {
+      const bg = sanitizeHexColor(customBg);
+      const text = sanitizeHexColor(customText);
+      if (bg && text) return { bg, text };
+      const preset = CATEGORY_PRESETS[String(category || '').trim()];
+      if (preset) return { bg: bg || preset.bg, text: text || preset.text };
+      return { bg: bg || '#e0f2fe', text: text || '#075985' };
     }
 
-    function getDotColor(cat) {
-      if (cat === '全校會議') return 'bg-blue-500';
-      if (cat === '教學研討') return 'bg-emerald-500';
-      if (cat === '處室會議') return 'bg-amber-500';
-      if (cat === '重大活動') return 'bg-purple-500';
-      return 'bg-slate-400';
-    }
-
-    // ── 搜尋與圖例膠囊過濾邏輯 ────────────────────────────────
+    // ── 搜尋與動態圖例膠囊過濾邏輯 ────────────────────────────
     function handleSearch(term) {
       currentSearchTerm = term.trim().toLowerCase();
       const clearBtn = document.getElementById('btnClearSearch');
@@ -1855,25 +1991,57 @@
       handleSearch('');
     }
 
-    function syncLegendChips() {
-      document.querySelectorAll('#legendFilterBar .legend-chip').forEach(btn => {
-        const cat = btn.getAttribute('data-cat');
-        const active = cat === currentCategory;
-        if (active) {
-          btn.classList.add('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
-          btn.classList.remove('bg-slate-50', 'text-slate-600', 'border-slate-200', 'hover:bg-slate-100');
-        } else {
-          btn.classList.remove('bg-slate-900', 'text-white', 'border-slate-900', 'shadow-sm');
-          btn.classList.add('bg-slate-50', 'text-slate-600', 'border-slate-200', 'hover:bg-slate-100');
+    function buildDynamicCategoryLegend() {
+      const catThemes = new Map();
+      eventsData.forEach(ev => {
+        const name = String(ev.category || '').trim();
+        if (!name) return;
+        if (!catThemes.has(name) || (ev.categoryBg && ev.categoryText)) {
+          catThemes.set(name, getCategoryTheme(name, ev.categoryBg, ev.categoryText));
         }
       });
+
+      if (currentCategory !== 'ALL' && !catThemes.has(currentCategory)) {
+        currentCategory = 'ALL';
+      }
+
+      const bar = document.getElementById('legendFilterBar');
+      if (bar) {
+        const allActive = currentCategory === 'ALL';
+        const allCls = allActive
+          ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100';
+        let html = `<span class="text-[11px] font-bold text-slate-400 mr-1">會議分類圖例：</span>`;
+        html += `<button type="button" data-cat="ALL" onclick="handleCategoryFilter(this.dataset.cat)" class="legend-chip px-2.5 py-1 rounded-full font-bold border transition cursor-pointer ${allCls}">全部排程</button>`;
+
+        catThemes.forEach((theme, name) => {
+          const active = currentCategory === name;
+          const cls = active
+            ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+            : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100';
+          html += `<button type="button" data-cat="${escapeHtml(name)}" onclick="handleCategoryFilter(this.dataset.cat)" class="legend-chip px-2.5 py-1 rounded-full font-semibold border transition flex items-center gap-1.5 cursor-pointer ${cls}"><span class="w-2 h-2 rounded-full" style="background-color:${active ? '#ffffff' : theme.text};"></span>${escapeHtml(name)}</button>`;
+        });
+        bar.innerHTML = html;
+      }
+
       const sel = document.getElementById('categoryFilter');
-      if (sel) sel.value = currentCategory;
+      if (sel) {
+        let optHtml = `<option value="ALL">全部分類</option>`;
+        catThemes.forEach((_theme, name) => {
+          optHtml += `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`;
+        });
+        sel.innerHTML = optHtml;
+        sel.value = currentCategory;
+      }
+    }
+
+    function syncLegendChips() {
+      buildDynamicCategoryLegend();
     }
 
     function handleCategoryFilter(cat) {
       currentCategory = cat || 'ALL';
-      syncLegendChips();
+      buildDynamicCategoryLegend();
       renderCalendar();
     }
 
@@ -1884,6 +2052,9 @@
           (e.title && e.title.toLowerCase().includes(currentSearchTerm)) ||
           (e.location && e.location.toLowerCase().includes(currentSearchTerm)) ||
           (e.department && e.department.toLowerCase().includes(currentSearchTerm)) ||
+          (e.participants && e.participants.toLowerCase().includes(currentSearchTerm)) ||
+          (e.periods && e.periods.toLowerCase().includes(currentSearchTerm)) ||
+          (e.category && e.category.toLowerCase().includes(currentSearchTerm)) ||
           (e.description && e.description.toLowerCase().includes(currentSearchTerm));
         return matchCat && matchSearch;
       });
@@ -1899,15 +2070,275 @@
       openAddModal(dateStr);
     }
 
+    function syncPasswordFieldMode(isEditing, hasPassword = true) {
+      const labelEl = document.getElementById('formPasswordLabel');
+      const pwdEl = document.getElementById('formPassword');
+      const hintEl = document.getElementById('formPasswordHint');
+      const isUnlockedAdmin = Boolean(adminSession && adminSession.token && !adminSession.isDefault);
+      const requireInput = !isEditing || (!isUnlockedAdmin && hasPassword !== false);
+
+      if (pwdEl) {
+        pwdEl.required = requireInput;
+        pwdEl.placeholder = isEditing
+          ? '請輸入建立此會議時的密碼（或管理者密碼）'
+          : '設定此筆資料的密碼';
+      }
+      if (labelEl) {
+        const title = isEditing ? '管理密碼驗證' : '設定密碼';
+        labelEl.innerHTML = requireInput
+          ? `${title} <span id="formPasswordRequiredStar" class="text-rose-500">*</span>`
+          : `${title} <span id="formPasswordRequiredStar" class="hidden text-rose-500">*</span>`;
+      }
+      if (hintEl) {
+        if (!isEditing) {
+          hintEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i> <span>請牢記此密碼以供日後修改或刪除驗證；若忘記密碼可聯繫系統管理者覆寫處理。</span>';
+        } else if (isUnlockedAdmin) {
+          hintEl.innerHTML = '<i class="fa-solid fa-shield-halved text-emerald-600"></i> <span>已通過管理者驗證，密碼欄可留空直接覆寫更新；一般修改請輸入原會議密碼。</span>';
+        } else if (hasPassword === false) {
+          hintEl.innerHTML = '<i class="fa-solid fa-circle-info text-slate-400"></i> <span>此為早期未設密碼之紀錄，可直接儲存更新。</span>';
+        } else {
+          hintEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-amber-500"></i> <span>請輸入原設定密碼以驗證修改權限；若忘記密碼可聯繫系統管理者覆寫。</span>';
+        }
+      }
+    }
+
     function openAddModal(presetDate = null) {
       resetAddForm();
-      document.getElementById('addModalHeaderTitle').innerText = '登記預約會議';
-      document.getElementById('formPasswordHint').innerText = '※ 若未填寫密碼，日後將允許同仁直接更新或取消此筆排程';
+      document.getElementById('addModalHeaderTitle').innerText = '新增會議 / 活動';
+      syncPasswordFieldMode(false, true);
       document.getElementById('formDate').value = presetDate || formatDateStr(new Date());
-      document.getElementById('formStartTime').value = '09:00';
-      document.getElementById('formEndTime').value = '10:00';
       openModal('addEventModal');
       checkLiveConflict();
+    }
+
+    // ── 開會節次複選與自訂時間展開連動 ────────────────────────
+    function getPeriodSelectionState() {
+      const checkedIndices = [];
+      const checkedLabels = [];
+      for (let i = 0; i < SCHOOL_PERIODS.length; i++) {
+        const box = document.getElementById(`periodOpt${i}`);
+        if (box && box.checked) {
+          checkedIndices.push(i);
+          checkedLabels.push(SCHOOL_PERIODS[i].label);
+        }
+      }
+      const customBox = document.getElementById('periodCustomCheckbox');
+      const isCustom = Boolean(customBox && customBox.checked);
+      return { checkedIndices, checkedLabels, isCustom };
+    }
+
+    function handlePeriodSelectionChange() {
+      const { checkedIndices, checkedLabels, isCustom } = getPeriodSelectionState();
+      const customWrap = document.getElementById('customTimeWrap');
+      const startInput = document.getElementById('formStartTime');
+      const endInput = document.getElementById('formEndTime');
+      const gapWarn = document.getElementById('periodGapWarning');
+      const summaryEl = document.getElementById('periodTimeSummary');
+
+      if (customWrap) customWrap.classList.toggle('hidden', !isCustom);
+      if (startInput) startInput.required = isCustom;
+      if (endInput) endInput.required = isCustom;
+
+      if (isCustom) {
+        if (gapWarn) gapWarn.classList.add('hidden');
+        if (startInput && !startInput.value) startInput.value = '09:00';
+        if (endInput && !endInput.value) endInput.value = '10:00';
+        const st = startInput ? startInput.value : '';
+        const et = endInput ? endInput.value : '';
+        if (summaryEl) {
+          summaryEl.innerText = st && et ? `自訂時間 (${st} ~ ${et})` : '請設定開始與結束時間';
+        }
+      } else if (checkedIndices.length > 0) {
+        const firstIdx = checkedIndices[0];
+        const lastIdx = checkedIndices[checkedIndices.length - 1];
+        const start = SCHOOL_PERIODS[firstIdx].start;
+        const end = SCHOOL_PERIODS[lastIdx].end;
+        if (startInput) startInput.value = start;
+        if (endInput) endInput.value = end;
+        const hasGap = (lastIdx - firstIdx + 1) !== checkedIndices.length;
+        if (gapWarn) gapWarn.classList.toggle('hidden', !hasGap);
+        if (summaryEl) summaryEl.innerText = `${checkedLabels.join('、')} (${start} ~ ${end})`;
+      } else {
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+        if (gapWarn) gapWarn.classList.add('hidden');
+        if (summaryEl) summaryEl.innerText = '請勾選開會節次或自訂時間';
+      }
+
+      checkLiveConflict();
+    }
+
+    function getFormPeriodsText() {
+      const { checkedLabels, isCustom } = getPeriodSelectionState();
+      if (isCustom) {
+        return checkedLabels.length > 0 ? `${checkedLabels.join('、')}、自訂時間` : '自訂時間';
+      }
+      return checkedLabels.join('、');
+    }
+
+    function clearAllPeriodCheckboxes() {
+      for (let i = 0; i < SCHOOL_PERIODS.length; i++) {
+        const box = document.getElementById(`periodOpt${i}`);
+        if (box) box.checked = false;
+      }
+      const customBox = document.getElementById('periodCustomCheckbox');
+      if (customBox) customBox.checked = false;
+    }
+
+    function setFormPeriodsAndTimes(periodsInput, startTime, endTime) {
+      clearAllPeriodCheckboxes();
+      const rawTokens = Array.isArray(periodsInput)
+        ? periodsInput
+        : String(periodsInput || '').split(/[、,，\s]+/);
+      const tokens = rawTokens.map(s => String(s || '').trim()).filter(Boolean);
+      const hasCustomToken = tokens.includes('自訂時間');
+
+      const matchedIndices = [];
+      SCHOOL_PERIODS.forEach((p, idx) => {
+        if (tokens.includes(p.label)) matchedIndices.push(idx);
+      });
+
+      const st = String(startTime || '').trim();
+      const et = String(endTime || '').trim();
+
+      if (matchedIndices.length > 0 && !hasCustomToken) {
+        const spanStart = SCHOOL_PERIODS[matchedIndices[0]].start;
+        const spanEnd = SCHOOL_PERIODS[matchedIndices[matchedIndices.length - 1]].end;
+        if ((!st || st === spanStart) && (!et || et === spanEnd)) {
+          matchedIndices.forEach(idx => {
+            const box = document.getElementById(`periodOpt${idx}`);
+            if (box) box.checked = true;
+          });
+          handlePeriodSelectionChange();
+          return;
+        }
+      }
+
+      if (st && et && !hasCustomToken) {
+        const sIdx = SCHOOL_PERIODS.findIndex(p => p.start === st);
+        const eIdx = SCHOOL_PERIODS.findIndex(p => p.end === et);
+        if (sIdx !== -1 && eIdx !== -1 && sIdx <= eIdx) {
+          for (let i = sIdx; i <= eIdx; i++) {
+            const box = document.getElementById(`periodOpt${i}`);
+            if (box) box.checked = true;
+          }
+          handlePeriodSelectionChange();
+          return;
+        }
+      }
+
+      if (st || et || hasCustomToken) {
+        const customBox = document.getElementById('periodCustomCheckbox');
+        if (customBox) customBox.checked = true;
+        const startInput = document.getElementById('formStartTime');
+        const endInput = document.getElementById('formEndTime');
+        if (startInput && st) startInput.value = st;
+        if (endInput && et) endInput.value = et;
+        handlePeriodSelectionChange();
+      } else {
+        handlePeriodSelectionChange();
+      }
+    }
+
+    // ── 分類與即時配色預覽 ───────────────────────────────────
+    function syncCategoryPreview() {
+      const catEl = document.getElementById('formCategory');
+      const bgEl = document.getElementById('formCatBg');
+      const txEl = document.getElementById('formCatText');
+      const pillEl = document.getElementById('colorPreviewPill');
+      const dotEl = document.getElementById('colorPreviewDot');
+      const labelEl = document.getElementById('colorPreviewLabel');
+
+      const labelText = (catEl && catEl.value.trim()) || '行政';
+      const bgHex = sanitizeHexColor(bgEl && bgEl.value) || '#dbeafe';
+      const txHex = sanitizeHexColor(txEl && txEl.value) || '#1e40af';
+
+      if (labelEl) labelEl.innerText = labelText;
+      if (pillEl && pillEl.style) {
+        pillEl.style.backgroundColor = bgHex;
+        pillEl.style.color = txHex;
+        pillEl.style.borderColor = hexToRgba(txHex, 0.25);
+      }
+      if (dotEl && dotEl.style) {
+        dotEl.style.backgroundColor = txHex;
+      }
+    }
+
+    function applyCategoryPreset(name, bgHex, txHex) {
+      const catEl = document.getElementById('formCategory');
+      const bgEl = document.getElementById('formCatBg');
+      const txEl = document.getElementById('formCatText');
+      if (catEl) catEl.value = name;
+      if (bgEl) bgEl.value = bgHex;
+      if (txEl) txEl.value = txHex;
+      syncCategoryPreview();
+    }
+
+    // ── 參與單位複選與「其他」展開控制 ────────────────────────
+    function handleParticipantsOtherToggle() {
+      const otherCb = document.getElementById('partOtherCheckbox');
+      const otherInput = document.getElementById('formParticipantsOther');
+      if (!otherCb || !otherInput) return;
+      if (otherCb.checked) {
+        otherInput.classList.remove('hidden');
+        otherInput.focus();
+      } else {
+        otherInput.classList.add('hidden');
+        otherInput.value = '';
+      }
+    }
+
+    function getFormParticipants() {
+      const selected = [];
+      for (let i = 0; i < PARTICIPANT_UNITS.length; i++) {
+        const box = document.getElementById(`partOpt${i}`);
+        if (box && box.checked) selected.push(PARTICIPANT_UNITS[i]);
+      }
+      const otherCb = document.getElementById('partOtherCheckbox');
+      const otherInput = document.getElementById('formParticipantsOther');
+      if (otherCb && otherCb.checked && otherInput && otherInput.value.trim()) {
+        const extras = otherInput.value.split(/[、,，]+/).map(s => s.trim()).filter(Boolean);
+        extras.forEach(item => {
+          if (!selected.includes(item)) selected.push(item);
+        });
+      }
+      return selected.join('、');
+    }
+
+    function setFormParticipants(participantsInput) {
+      for (let i = 0; i < PARTICIPANT_UNITS.length; i++) {
+        const box = document.getElementById(`partOpt${i}`);
+        if (box) box.checked = false;
+      }
+      const otherCb = document.getElementById('partOtherCheckbox');
+      const otherInput = document.getElementById('formParticipantsOther');
+      if (otherCb) otherCb.checked = false;
+      if (otherInput) {
+        otherInput.value = '';
+        otherInput.classList.add('hidden');
+      }
+
+      const rawList = Array.isArray(participantsInput)
+        ? participantsInput
+        : String(participantsInput || '').split(/[、,，]+/);
+      const items = rawList.map(s => String(s || '').trim()).filter(Boolean);
+      const customExtras = [];
+
+      items.forEach(item => {
+        const idx = PARTICIPANT_UNITS.indexOf(item);
+        if (idx !== -1) {
+          const box = document.getElementById(`partOpt${idx}`);
+          if (box) box.checked = true;
+        } else {
+          customExtras.push(item);
+        }
+      });
+
+      if (customExtras.length > 0 && otherCb && otherInput) {
+        otherCb.checked = true;
+        otherInput.value = customExtras.join('、');
+        otherInput.classList.remove('hidden');
+      }
     }
 
     // ── 地點與處室下拉選單控制 ────────────────────────────────
@@ -2011,10 +2442,18 @@
       ['formDate', 'formStartTime', 'formEndTime', 'formLocation', 'formLocationOther'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('input', () => {
+        const onTimeInput = () => {
+          const customBox = document.getElementById('periodCustomCheckbox');
+          if ((id === 'formStartTime' || id === 'formEndTime') && customBox && customBox.checked) {
+            const summaryEl = document.getElementById('periodTimeSummary');
+            const st = document.getElementById('formStartTime')?.value || '';
+            const et = document.getElementById('formEndTime')?.value || '';
+            if (summaryEl) summaryEl.innerText = st && et ? `自訂時間 (${st} ~ ${et})` : '請設定開始與結束時間';
+          }
           clearTimeout(conflictTimer);
           conflictTimer = setTimeout(checkLiveConflict, 120);
-        });
+        };
+        el.addEventListener('input', onTimeInput);
         el.addEventListener('change', () => {
           clearTimeout(conflictTimer);
           conflictTimer = setTimeout(checkLiveConflict, 40);
@@ -2040,7 +2479,7 @@
       if (!date || !startTime || !endTime || !location) {
         radar.className = `${baseClass} bg-slate-50 text-slate-600 border-slate-200`;
         dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-slate-400';
-        text.innerText = '請選取日期、時段與地點以啟動即時場地衝突偵測';
+        text.innerText = '請選取日期、地點與開會節次以啟動即時場地衝突偵測';
         if (btnRec) btnRec.classList.add('hidden');
         return;
       }
@@ -2083,46 +2522,58 @@
         return;
       }
 
-      const candidateSlots = [
-        { start: '08:30', end: '09:30' },
-        { start: '09:30', end: '10:30' },
-        { start: '10:30', end: '11:30' },
-        { start: '13:30', end: '14:30' },
-        { start: '14:30', end: '15:30' },
-        { start: '15:30', end: '16:30' }
-      ];
+      const hasOverlap = (st, et) => eventsData.some(ex => {
+        if (editId && ex.id === editId) return false;
+        return ex.date === date &&
+          (ex.location || '').trim().toLowerCase() === location.toLowerCase() &&
+          st < ex.endTime && et > ex.startTime;
+      });
 
-      for (const slot of candidateSlots) {
-        const conflict = eventsData.find(ex => {
-          if (editId && ex.id === editId) return false;
-          if (ex.date === date && (ex.location || '').trim().toLowerCase() === location.toLowerCase()) {
-            return (slot.start < ex.endTime && slot.end > ex.startTime);
-          }
-          return false;
-        });
-
-        if (!conflict) {
-          document.getElementById('formStartTime').value = slot.start;
-          document.getElementById('formEndTime').value = slot.end;
-          checkLiveConflict();
-          showToast(`已自動推薦並套用空閒時段：${slot.start} ~ ${slot.end}`, 'success');
+      // 優先推薦常用課堂節次 (第1節~第8節，再試朝會與午休)
+      const periodOrder = [1, 2, 3, 4, 6, 7, 8, 9, 0, 5];
+      for (const idx of periodOrder) {
+        const p = SCHOOL_PERIODS[idx];
+        if (!hasOverlap(p.start, p.end)) {
+          setFormPeriodsAndTimes(p.label, p.start, p.end);
+          showToast(`已自動推薦並勾選空閒節次：${p.label} (${p.start} ~ ${p.end})`, 'success');
           return;
         }
       }
 
-      showToast('當日所有常態時段皆已有預約，建議更換場地或調整日期。', 'warning');
+      const fallbackSlots = [
+        { start: '16:45', end: '17:45' },
+        { start: '07:30', end: '08:00' }
+      ];
+      for (const slot of fallbackSlots) {
+        if (!hasOverlap(slot.start, slot.end)) {
+          setFormPeriodsAndTimes('自訂時間', slot.start, slot.end);
+          showToast(`當日節次皆有預約，已推薦延伸空檔：${slot.start} ~ ${slot.end}`, 'success');
+          return;
+        }
+      }
+
+      showToast('當日所有常態節次與時段皆已有預約，建議更換場地或調整日期。', 'warning');
     }
 
     function resetAddForm() {
       document.getElementById('addEventForm').reset();
       document.getElementById('formEditId').value = '';
+      clearAllPeriodCheckboxes();
+      setFormParticipants('');
+      const catEl = document.getElementById('formCategory');
+      const bgEl = document.getElementById('formCatBg');
+      const txEl = document.getElementById('formCatText');
+      if (catEl) catEl.value = '';
+      if (bgEl) bgEl.value = '#dbeafe';
+      if (txEl) txEl.value = '#1e40af';
+      syncCategoryPreview();
       const submitBtn = document.getElementById('btnSubmitAdd');
       submitBtn.disabled = false;
-      submitBtn.innerText = '確認預約';
+      submitBtn.innerText = '確認新增';
       document.getElementById('formConflictAlert').classList.add('hidden');
       handleLocationChange();
       handleDepartmentChange();
-      checkLiveConflict();
+      handlePeriodSelectionChange();
     }
 
     // ── 會議詳情檢視與 AI 協作呼叫 ────────────────────────────
@@ -2131,14 +2582,49 @@
       if (!ev) return;
       activeEvent = ev;
 
+      const theme = getCategoryTheme(ev.category, ev.categoryBg, ev.categoryText);
+      const catBadge = document.getElementById('detailBadgeCat');
+      if (catBadge) {
+        catBadge.innerText = ev.category || '一般會議';
+        catBadge.className = 'px-2.5 py-0.5 text-xs rounded-full font-bold border';
+        if (catBadge.style) {
+          catBadge.style.backgroundColor = theme.bg;
+          catBadge.style.color = theme.text;
+          catBadge.style.borderColor = hexToRgba(theme.text, 0.25);
+        }
+      }
+
       document.getElementById('detailModalTitle').innerText = ev.title;
       document.getElementById('detailTitle').innerText = ev.title;
-      document.getElementById('detailDept').innerText = ev.department || '未填寫主辦處室';
+      document.getElementById('detailDept').innerText = ev.department || '未填寫申請單位';
       document.getElementById('detailDateTime').innerText = `${ev.date} ${ev.startTime} ~ ${ev.endTime}`;
+
+      const periodBadge = document.getElementById('detailPeriodBadge');
+      if (periodBadge) {
+        if (ev.periods && String(ev.periods).trim() !== '') {
+          periodBadge.innerText = ev.periods;
+          periodBadge.classList.remove('hidden');
+        } else {
+          periodBadge.innerText = '';
+          periodBadge.classList.add('hidden');
+        }
+      }
+
       document.getElementById('detailLocation').innerText = ev.location;
+
+      const partRow = document.getElementById('detailParticipantsRow');
+      const partText = document.getElementById('detailParticipants');
+      if (partRow && partText) {
+        if (ev.participants && String(ev.participants).trim() !== '') {
+          partText.innerText = `參與單位：${ev.participants}`;
+          partRow.classList.remove('hidden');
+        } else {
+          partText.innerText = '--';
+          partRow.classList.add('hidden');
+        }
+      }
+
       document.getElementById('detailDesc').innerText = ev.description || '無補充備註';
-      document.getElementById('detailBadgeCat').innerText = ev.category || '一般會議';
-      document.getElementById('detailBadgeCat').className = `px-2.5 py-0.5 rounded-full text-xs font-bold border ${getBadgeClass(ev.category)}`;
       document.getElementById('aiGeneratedOutputBox').classList.add('hidden');
       const notesEl = document.getElementById('eventNotesInput');
       if (notesEl) notesEl.value = '';
@@ -2150,20 +2636,30 @@
     function editCurrentEvent() {
       if (!activeEvent) return;
       closeModal('eventDetailModal');
+      resetAddForm();
 
       document.getElementById('addModalHeaderTitle').innerText = '修改會議排程';
       document.getElementById('formEditId').value = activeEvent.id;
       document.getElementById('formTitle').value = activeEvent.title;
       document.getElementById('formDate').value = activeEvent.date;
-      document.getElementById('formStartTime').value = activeEvent.startTime;
-      document.getElementById('formEndTime').value = activeEvent.endTime;
       setFormLocation(activeEvent.location);
       setFormDepartment(activeEvent.department);
-      const validCats = ['全校會議', '處室會議', '教學研討', '重大活動', '其他'];
-      document.getElementById('formCategory').value = validCats.includes(activeEvent.category) ? activeEvent.category : '全校會議';
+      setFormPeriodsAndTimes(activeEvent.periods, activeEvent.startTime, activeEvent.endTime);
+
+      const theme = getCategoryTheme(activeEvent.category, activeEvent.categoryBg, activeEvent.categoryText);
+      const catEl = document.getElementById('formCategory');
+      const bgEl = document.getElementById('formCatBg');
+      const txEl = document.getElementById('formCatText');
+      if (catEl) catEl.value = activeEvent.category || '';
+      if (bgEl) bgEl.value = theme.bg;
+      if (txEl) txEl.value = theme.text;
+      syncCategoryPreview();
+
+      setFormParticipants(activeEvent.participants || '');
       document.getElementById('formDescription').value = activeEvent.description || '';
       document.getElementById('formPassword').value = '';
-      document.getElementById('formPasswordHint').innerText = '※ 修改原設有密碼之會議，請輸入原管理密碼驗證；無設密碼者可留空';
+      syncPasswordFieldMode(true, activeEvent.hasPassword);
+
       const submitBtn = document.getElementById('btnSubmitAdd');
       submitBtn.disabled = false;
       submitBtn.innerText = '更新排程';
@@ -2336,29 +2832,53 @@
         return;
       }
       if (!dep) {
-        showToast('請選擇或填寫主辦單位/處室！', 'warning');
+        showToast('請選擇或填寫申請單位（主辦單位）！', 'warning');
         document.getElementById('formDepartment').focus();
         return;
       }
 
+      const startTime = document.getElementById('formStartTime').value.trim();
+      const endTime = document.getElementById('formEndTime').value.trim();
+      if (!startTime || !endTime) {
+        showToast('請至少勾選一個開會節次，或勾選「自訂時間」輸入起迄時段！', 'warning');
+        return;
+      }
+      if (startTime >= endTime) {
+        showToast('結束時間必須晚於開始時間！', 'warning');
+        return;
+      }
+
+      const pwd = document.getElementById('formPassword').value.trim();
+      const isUnlockedAdmin = Boolean(adminSession && adminSession.token && !adminSession.isDefault);
+      if (!isEditing && !pwd) {
+        showToast('請設定此筆會議的管理密碼（必填）！', 'warning');
+        document.getElementById('formPassword').focus();
+        return;
+      }
+      if (isEditing && !pwd && !isUnlockedAdmin && (!activeEvent || activeEvent.hasPassword !== false)) {
+        showToast('請輸入原設定之管理密碼以驗證修改權限！', 'warning');
+        document.getElementById('formPassword').focus();
+        return;
+      }
+
+      const rawCategory = document.getElementById('formCategory').value.trim() || '行政';
       const payload = {
         id: editId || undefined,
         title: document.getElementById('formTitle').value.trim(),
         date: document.getElementById('formDate').value,
-        startTime: document.getElementById('formStartTime').value,
-        endTime: document.getElementById('formEndTime').value,
+        startTime,
+        endTime,
+        periods: getFormPeriodsText(),
         location: loc,
         department: dep,
-        category: document.getElementById('formCategory').value,
+        participants: getFormParticipants(),
+        category: rawCategory,
+        categoryBg: sanitizeHexColor(document.getElementById('formCatBg')?.value) || '#dbeafe',
+        categoryText: sanitizeHexColor(document.getElementById('formCatText')?.value) || '#1e40af',
         description: document.getElementById('formDescription').value.trim(),
-        password: document.getElementById('formPassword').value.trim(),
-        adminToken: (isEditing && adminSession && adminSession.token) ? adminSession.token : undefined
+        password: pwd,
+        adminToken: (isEditing && isUnlockedAdmin) ? adminSession.token : undefined
       };
-
-      if (payload.startTime >= payload.endTime) {
-        showToast('結束時間必須晚於開始時間！', 'warning');
-        return;
-      }
 
       // 前端預檢衝突
       const conflict = eventsData.find(ex => {
@@ -2405,7 +2925,7 @@
         showToast('雲端連線失敗：' + (err.message || err.toString()), 'error');
       } finally {
         btn.disabled = false;
-        btn.innerText = isEditing ? '更新排程' : '確認預約';
+        btn.innerText = isEditing ? '更新排程' : '確認新增';
       }
     }
 
@@ -2463,10 +2983,27 @@
       document.getElementById('aiResultCard').classList.remove('hidden');
       document.getElementById('resTitle').innerText = data.title || '未識別';
       document.getElementById('resDate').innerText = data.date || '未識別';
-      document.getElementById('resTime').innerText = `${data.startTime || '--'} ~ ${data.endTime || '--'}`;
+      const periodText = Array.isArray(data.periods) && data.periods.length > 0
+        ? ` (${data.periods.join('、')})`
+        : '';
+      document.getElementById('resTime').innerText = `${data.startTime || '--'} ~ ${data.endTime || '--'}${periodText}`;
       document.getElementById('resLocation').innerText = data.location || '未識別';
       document.getElementById('resDept').innerText = data.department || '未識別';
-      document.getElementById('resCat').innerText = data.category || '全校會議';
+      document.getElementById('resCat').innerText = data.category || '行政';
+
+      const partBox = document.getElementById('resParticipantsBox');
+      const partEl = document.getElementById('resParticipants');
+      if (partBox && partEl) {
+        const parts = Array.isArray(data.participants) ? data.participants.join('、') : String(data.participants || '').trim();
+        if (parts) {
+          partEl.innerText = parts;
+          partBox.classList.remove('hidden');
+        } else {
+          partEl.innerText = '--';
+          partBox.classList.add('hidden');
+        }
+      }
+
       document.getElementById('resDesc').innerText = data.description || '無詳細備註';
 
       const confMap = { high: '可信度：高', medium: '可信度：中', low: '可信度：待確認' };
@@ -2493,15 +3030,19 @@
 
       openAddModal(parsedAiResult.date || formatDateStr(new Date()));
       document.getElementById('formTitle').value = parsedAiResult.title || '';
-      document.getElementById('formStartTime').value = parsedAiResult.startTime || '09:00';
-      document.getElementById('formEndTime').value = parsedAiResult.endTime || '10:00';
+      setFormPeriodsAndTimes(parsedAiResult.periods, parsedAiResult.startTime || '09:00', parsedAiResult.endTime || '10:00');
       setFormLocation(parsedAiResult.location || '');
       setFormDepartment(parsedAiResult.department || '');
-      const validCats = ['全校會議', '處室會議', '教學研討', '重大活動', '其他'];
-      document.getElementById('formCategory').value = validCats.includes(parsedAiResult.category) ? parsedAiResult.category : '處室會議';
+      if (parsedAiResult.participants) {
+        setFormParticipants(parsedAiResult.participants);
+      }
+      const catName = String(parsedAiResult.category || '行政').trim() || '行政';
+      const theme = getCategoryTheme(catName);
+      applyCategoryPreset(catName, theme.bg, theme.text);
       document.getElementById('formDescription').value = parsedAiResult.description || '';
 
       checkLiveConflict();
+      setTimeout(() => document.getElementById('formPassword')?.focus(), 100);
     }
 
     // ========================================================
@@ -2558,8 +3099,7 @@
       if (!slot || !slot.date) return;
       closeModal('aiChatModal');
       openAddModal(slot.date);
-      if (slot.startTime) document.getElementById('formStartTime').value = slot.startTime;
-      if (slot.endTime) document.getElementById('formEndTime').value = slot.endTime;
+      setFormPeriodsAndTimes(slot.periods || '', slot.startTime || '09:00', slot.endTime || '10:00');
       if (slot.location) setFormLocation(slot.location);
       checkLiveConflict();
       showToast('已套用 AI 秘書建議時段至預約表單！', 'success');
@@ -2647,15 +3187,17 @@
         return;
       }
 
-      const headers = ['ID', '會議名稱', '日期', '開始時間', '結束時間', '會議地點', '主辦處室', '分類', '備註說明'];
+      const headers = ['ID', '會議名稱', '日期', '開始時間', '結束時間', '節次', '會議地點', '申請/主辦單位', '參與單位', '分類', '備註說明'];
       const rows = list.map(e => [
         sanitizeCsvCell(e.id),
         sanitizeCsvCell(e.title),
         sanitizeCsvCell(e.date),
         sanitizeCsvCell(e.startTime),
         sanitizeCsvCell(e.endTime),
+        sanitizeCsvCell(e.periods || ''),
         sanitizeCsvCell(e.location),
         sanitizeCsvCell(e.department),
+        sanitizeCsvCell(e.participants || ''),
         sanitizeCsvCell(e.category),
         sanitizeCsvCell(e.description)
       ]);

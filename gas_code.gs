@@ -12,6 +12,35 @@ var DEFAULT_ADMIN_PASSWORD = 'admin888';
 var ADMIN_SESSION_EXPIRE_SEC = 7200;
 var LOGIN_MAX_ATTEMPTS = 5;
 var LOGIN_LOCK_SECONDS = 900;
+var MEETING_HEADERS = [
+  'ID', '標題', '日期', '開始時間', '結束時間', '地點',
+  '主辦單位/部門', '分類', '說明備註', '密碼(Hash)', '建立時間',
+  '節次', '參與單位', '分類底色', '分類字色'
+];
+var AUDIT_HEADERS = [
+  '異動時間', '操作類型', '會議ID', '會議名稱', '日期', '開始時間',
+  '結束時間', '地點', '主辦單位/部門', '分類', '說明備註', '節次', '參與單位'
+];
+
+function sanitizeHexColor_(val) {
+  var s = String(val || '').trim();
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : '';
+}
+
+function ensureSheetHeaderColumns_(sheet, expectedHeaders, bgColor) {
+  if (!sheet || sheet.getLastRow() < 1) return;
+  var rows = readSheetValues_(sheet);
+  var headerRow = rows[0] || [];
+  for (var c = 0; c < expectedHeaders.length; c++) {
+    if (!String(headerRow[c] || '').trim()) {
+      var cell = sheet.getRange(1, c + 1);
+      cell.setValue(expectedHeaders[c]);
+      if (typeof cell.setFontWeight === 'function') cell.setFontWeight('bold');
+      if (typeof cell.setBackground === 'function') cell.setBackground(bgColor);
+      if (typeof cell.setFontColor === 'function') cell.setFontColor('#ffffff');
+    }
+  }
+}
 
 function readSheetValues_(sheet) {
   if (!sheet) return [];
@@ -69,18 +98,20 @@ function getAuditSheet_(ss) {
   var auditSheet = ss.getSheetByName(AUDIT_SHEET_NAME);
   if (!auditSheet) {
     auditSheet = ss.insertSheet(AUDIT_SHEET_NAME);
-    var header = ['異動時間', '操作類型', '會議ID', '會議名稱', '日期', '開始時間',
-                  '結束時間', '地點', '主辦單位/部門', '分類', '說明備註'];
-    auditSheet.appendRow(header);
-    auditSheet.getRange(1, 1, 1, header.length)
+    auditSheet.appendRow(AUDIT_HEADERS);
+    auditSheet.getRange(1, 1, 1, AUDIT_HEADERS.length)
               .setFontWeight('bold')
               .setBackground('#0f172a')
               .setFontColor('#ffffff');
     auditSheet.setFrozenRows(1);
-    auditSheet.setColumnWidths(1, 11, 125);
+    auditSheet.setColumnWidths(1, AUDIT_HEADERS.length, 125);
     auditSheet.setColumnWidth(4, 220);
     auditSheet.setColumnWidth(8, 160);
-    auditSheet.setColumnWidth(11, 260);
+    auditSheet.setColumnWidth(11, 240);
+    auditSheet.setColumnWidth(12, 140);
+    auditSheet.setColumnWidth(13, 200);
+  } else {
+    ensureSheetHeaderColumns_(auditSheet, AUDIT_HEADERS, '#0f172a');
   }
   return auditSheet;
 }
@@ -244,7 +275,9 @@ function appendAuditLog_(actionType, ev) {
       String(ev.location || ''),
       String(ev.department || ''),
       String(ev.category || ''),
-      String(ev.description || '')
+      String(ev.description || ''),
+      String(ev.periods || ''),
+      String(ev.participants || '')
     ]);
   } catch (e) {
     console.warn('appendAuditLog_ failed:', e);
@@ -262,18 +295,22 @@ function getSheet() {
     } else {
       sheet = ss.insertSheet(SHEET_NAME);
     }
-    var header = ['ID', '標題', '日期', '開始時間', '結束時間', '地點',
-                  '主辦單位/部門', '分類', '說明備註', '密碼(Hash)', '建立時間'];
-    sheet.appendRow(header);
-    sheet.getRange(1, 1, 1, header.length)
+    sheet.appendRow(MEETING_HEADERS);
+    sheet.getRange(1, 1, 1, MEETING_HEADERS.length)
          .setFontWeight('bold')
          .setBackground('#1e3a8a') // 沉穩海軍藍
          .setFontColor('#ffffff');
     sheet.setFrozenRows(1);
-    sheet.setColumnWidths(1, 11, 120);
+    sheet.setColumnWidths(1, MEETING_HEADERS.length, 120);
     sheet.setColumnWidth(2, 220);
     sheet.setColumnWidth(6, 160);
-    sheet.setColumnWidth(9, 260);
+    sheet.setColumnWidth(9, 240);
+    sheet.setColumnWidth(12, 140);
+    sheet.setColumnWidth(13, 200);
+    sheet.setColumnWidth(14, 95);
+    sheet.setColumnWidth(15, 95);
+  } else {
+    ensureSheetHeaderColumns_(sheet, MEETING_HEADERS, '#1e3a8a');
   }
 
   try {
@@ -408,7 +445,12 @@ function getEvents() {
       department: String(row[6] || ''),
       category: String(row[7] || '全校會議'),
       description: String(row[8] || ''),
-      createdAt: row[10] ? formatDate(row[10]) : ''
+      createdAt: row[10] ? formatDate(row[10]) : '',
+      hasPassword: Boolean(String(row[9] || '').trim()),
+      periods: String(row[11] || ''),
+      participants: String(row[12] || ''),
+      categoryBg: sanitizeHexColor_(row[13]),
+      categoryText: sanitizeHexColor_(row[14])
     });
   }
   return events;
@@ -430,12 +472,19 @@ function addEvent(payload) {
     var endTime = formatTime(payload.endTime);
     var location = String(payload.location || '').trim();
     var department = String(payload.department || '').trim();
-    var category = String(payload.category || '全校會議').trim();
+    var category = String(payload.category || '').trim() || '行政';
     var description = String(payload.description || '').trim();
     var password = String(payload.password || '').trim();
+    var periods = String(payload.periods || '').trim();
+    var participants = String(payload.participants || '').trim();
+    var categoryBg = sanitizeHexColor_(payload.categoryBg);
+    var categoryText = sanitizeHexColor_(payload.categoryText);
 
-    if (!title || !date || !startTime || !endTime) {
-      return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
+    if (!title || !date || !startTime || !endTime || !location || !department) {
+      return { status: 'error', message: '標題、日期、地點、開會時間與申請單位為必填欄位。' };
+    }
+    if (!password) {
+      return { status: 'error', message: '請設定此筆會議的管理密碼（用於日後修改或刪除）。' };
     }
     if (startTime >= endTime) {
       return { status: 'error', message: '開始時間必須早於結束時間。' };
@@ -471,7 +520,11 @@ function addEvent(payload) {
       category,
       description,
       pwdHash,
-      nowStr
+      nowStr,
+      periods,
+      participants,
+      categoryBg,
+      categoryText
     ]);
     appendAuditLog_('新增預約', {
       id: id,
@@ -482,7 +535,9 @@ function addEvent(payload) {
       location: location,
       department: department,
       category: category,
-      description: description
+      description: description,
+      periods: periods,
+      participants: participants
     });
 
     SpreadsheetApp.flush();
@@ -524,11 +579,15 @@ function updateEvent(payload) {
     var endTime = formatTime(payload.endTime);
     var location = String(payload.location || '').trim();
     var department = String(payload.department || '').trim();
-    var category = String(payload.category || '全校會議').trim();
+    var category = String(payload.category || '').trim() || '行政';
     var description = String(payload.description || '').trim();
+    var periods = String(payload.periods || '').trim();
+    var participants = String(payload.participants || '').trim();
+    var categoryBg = sanitizeHexColor_(payload.categoryBg);
+    var categoryText = sanitizeHexColor_(payload.categoryText);
 
-    if (!title || !date || !startTime || !endTime) {
-      return { status: 'error', message: '標題、日期、開始時間與結束時間為必填欄位。' };
+    if (!title || !date || !startTime || !endTime || !location || !department) {
+      return { status: 'error', message: '標題、日期、地點、開會時間與申請單位為必填欄位。' };
     }
     if (startTime >= endTime) {
       return { status: 'error', message: '開始時間必須早於結束時間。' };
@@ -568,6 +627,10 @@ function updateEvent(payload) {
         sheet.getRange(rowIdx, 7).setValue(department);
         sheet.getRange(rowIdx, 8).setValue(category);
         sheet.getRange(rowIdx, 9).setValue(description);
+        sheet.getRange(rowIdx, 12).setValue(periods);
+        sheet.getRange(rowIdx, 13).setValue(participants);
+        sheet.getRange(rowIdx, 14).setValue(categoryBg);
+        sheet.getRange(rowIdx, 15).setValue(categoryText);
 
         if (payload.newPassword && String(payload.newPassword).trim() !== '') {
           sheet.getRange(rowIdx, 10).setValue(hashPassword(String(payload.newPassword).trim()));
@@ -582,7 +645,9 @@ function updateEvent(payload) {
           location: location,
           department: department,
           category: category,
-          description: description
+          description: description,
+          periods: periods,
+          participants: participants
         });
 
         SpreadsheetApp.flush();
@@ -632,7 +697,9 @@ function deleteEvent(payload) {
           location: oldRow[5],
           department: oldRow[6],
           category: oldRow[7],
-          description: oldRow[8]
+          description: oldRow[8],
+          periods: oldRow[11] || '',
+          participants: oldRow[12] || ''
         });
         SpreadsheetApp.flush();
         return { status: 'success', message: '會議已成功刪除。' };
@@ -1091,17 +1158,18 @@ function aiExtractEvent(text) {
     "你是一位台灣中小學的校園智慧行政秘書。\n" +
     "你的任務是從第一線教師或承辦人提供的非結構化公文、Email、校園Line通知或處室報告文字中，精準擷取會議排程資訊。\n" +
     "今天是 " + todayStr + " (" + dayOfWeek + ")。如果是相對日期（例如「下週三」、「明天」），請換算成精確的 YYYY-MM-DD。\n" +
-    "時間若只有時段（例如「第2節」約為 09:10~10:00；「第5節/下午第1節」約為 13:15~14:05；「下午2點」為 14:00），請自動轉換為標準 24 小時制 HH:mm。\n" +
-    "若文字未載明結束時間，預設會議時長為 1 小時。\n" +
+    "本校作息節次對照：朝會(08:00-08:20)、第1節(08:30-09:15)、第2節(09:25-10:10)、第3節(10:20-11:05)、第4節(11:15-12:00)、午休(12:00-13:05)、第5節(13:10-13:55)、第6節(14:05-14:50)、第7節(15:00-15:45)、第8節(15:55-16:40)。若公文提及節次，請依對照換算為 HH:mm 並填入 periods 陣列；若未載明結束時間，預設為 1 小時。\n" +
     "請以 JSON 物件輸出，嚴格符合下列鍵名：\n" +
     "{\n" +
     '  "title": "會議精簡標題",\n' +
     '  "date": "YYYY-MM-DD",\n' +
     '  "startTime": "HH:mm",\n' +
     '  "endTime": "HH:mm",\n' +
+    '  "periods": ["第2節"],\n' +
     '  "location": "會議地點（優先對應大溪國中常用場地：學生活動中心、行政大樓3F教師研習中心、科技館1F視聽教室、科技館2F科技智慧教室、科技館2F科技創作教室、圖書館、校史室、新大樓1F視聽中心，若非上述請填精確自訂地點）",\n' +
     '  "department": "主辦處室或召集人（如：教務處、學務處、總務處、輔導室、人事室、科技中心等）",\n' +
-    '  "category": "分類（可選：全校會議、處室會議、教學研討、重大活動、其他）",\n' +
+    '  "participants": ["教務處", "七年級導師"],\n' +
+    '  "category": "分類（如：行政、全校會議、處室會議、教學研討、重大活動、親師等）",\n' +
     '  "description": "摘要重點、待辦事項或需攜帶資料",\n' +
     '  "confidence": "high/medium/low",\n' +
     '  "notes": "解析補充提醒（如有缺漏時提醒使用者手動確認）"\n' +
@@ -1157,8 +1225,10 @@ function aiChatSchedule(userMessage) {
       date: event.date,
       startTime: event.startTime,
       endTime: event.endTime,
+      periods: sanitizeScheduleText_(event.periods),
       location: sanitizeScheduleText_(event.location),
       department: sanitizeScheduleText_(event.department),
+      participants: sanitizeScheduleText_(event.participants),
       category: sanitizeScheduleText_(event.category),
       title: sanitizeScheduleText_(event.title)
     };
@@ -1198,9 +1268,10 @@ function aiGenerateMinutes(ev, notes) {
 
   var prompt = "會議基本資訊：\n" +
                "會議名稱：" + (ev.title || '校務行政會議') + "\n" +
-               "時間：" + (ev.date || '') + " " + (ev.startTime || '') + "~" + (ev.endTime || '') + "\n" +
+               "時間：" + (ev.date || '') + " " + (ev.startTime || '') + "~" + (ev.endTime || '') + (ev.periods ? ("（" + ev.periods + "）") : "") + "\n" +
                "地點：" + (ev.location || '校內會議室') + "\n" +
-               "主辦單位：" + (ev.department || '主辦處室') + "\n" +
+               "申請/主辦單位：" + (ev.department || '主辦處室') + "\n" +
+               "參與單位：" + (ev.participants || '未另指定') + "\n" +
                "會議備註：" + (ev.description || '無特殊備註') + "\n\n" +
                "現場筆記與討論要點：" + (notes ? ("\n" + notes) : "（無額外提供現場速記，請依上述會議資訊與公務體例預擬草案框架，案由依備註合理草擬，各決議與管制追蹤事項載明待核定草案）");
 

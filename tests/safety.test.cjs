@@ -98,6 +98,8 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
     innerHTML: '',
     disabled: false,
     required: false,
+    checked: false,
+    style: {},
     options: [{value: ''}, {value: '圖書館'}, {value: '教務處'}, {value: '其他'}],
     classList: {
       items: new Set(),
@@ -146,7 +148,7 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.match(ctx.getActiveGasUrl(), /^https:\/\/script\.google\.com\//);
   assert.equal(storage.has('DSJH_GAS_API_URL'), false);
 
-  // quickAddDate preserves chosen date and checks conflict radar cleanly
+  // quickAddDate preserves chosen date, requires password on add, and checks period + conflict radar cleanly
   vm.runInContext(`eventsData.push({
     id: 'evt-1',
     title: '既定會議',
@@ -159,15 +161,58 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   });`, ctx);
   ctx.quickAddDate('2026-11-25');
   assert.equal(elements.get('formDate').value, '2026-11-25');
+  assert.equal(elements.get('formPassword').required, true);
+  assert.equal(elements.get('formStartTime').value, '');
+  assert.equal(elements.get('formEndTime').value, '');
+
+  // Select 第1節 (08:30-09:15) + 第2節 (09:25-10:10) -> auto-computes 08:30~10:10 & triggers conflict radar
   elements.get('formLocation').value = '圖書館';
-  ctx.checkLiveConflict();
+  elements.get('periodOpt1').checked = true;
+  elements.get('periodOpt2').checked = true;
+  ctx.handlePeriodSelectionChange();
+  assert.equal(elements.get('formStartTime').value, '08:30');
+  assert.equal(elements.get('formEndTime').value, '10:10');
+  assert.equal(elements.get('periodGapWarning').classList.contains('hidden'), true);
   assert.match(elements.get('radarText').innerHTML, /場地衝突預警/);
   assert.equal(elements.get('btnAutoRecommend').classList.contains('hidden'), false);
+
+  // recommendAvailableSlot skips conflicting 第1節/第2節 and picks 第3節 (10:20-11:05)
   ctx.recommendAvailableSlot();
-  assert.equal(elements.get('formStartTime').value, '10:30');
-  assert.equal(elements.get('formEndTime').value, '11:30');
+  assert.equal(elements.get('periodOpt3').checked, true);
+  assert.equal(elements.get('formStartTime').value, '10:20');
+  assert.equal(elements.get('formEndTime').value, '11:05');
   assert.match(elements.get('radarText').innerHTML, /時段空閒可用/);
   assert.equal(elements.get('btnAutoRecommend').classList.contains('hidden'), true);
+
+  // Non-contiguous periods show gap warning
+  elements.get('periodOpt3').checked = false;
+  elements.get('periodOpt1').checked = true;
+  elements.get('periodOpt6').checked = true;
+  ctx.handlePeriodSelectionChange();
+  assert.equal(elements.get('periodGapWarning').classList.contains('hidden'), false);
+  assert.equal(elements.get('formStartTime').value, '08:30');
+  assert.equal(elements.get('formEndTime').value, '13:55');
+
+  // Custom time checkbox reveals manual inputs and marks them required
+  elements.get('periodOpt1').checked = false;
+  elements.get('periodOpt6').checked = false;
+  elements.get('periodCustomCheckbox').checked = true;
+  ctx.handlePeriodSelectionChange();
+  assert.equal(elements.get('customTimeWrap').classList.contains('hidden'), false);
+  assert.equal(elements.get('formStartTime').required, true);
+
+  // Custom category color preview + dynamic category legend + participant helper
+  ctx.applyCategoryPreset('親師', '#ffe4e6', '#9f1239');
+  assert.equal(elements.get('formCategory').value, '親師');
+  assert.equal(elements.get('colorPreviewLabel').innerText, '親師');
+  assert.equal(elements.get('colorPreviewPill').style.backgroundColor, '#ffe4e6');
+  elements.get('partOpt0').checked = true;
+  elements.get('partOpt6').checked = true;
+  elements.get('partOtherCheckbox').checked = true;
+  elements.get('formParticipantsOther').value = '家長會, 志工隊';
+  assert.equal(ctx.getFormParticipants(), '教務處、七年級導師、家長會、志工隊');
+  ctx.buildDynamicCategoryLegend();
+  assert.match(elements.get('legendFilterBar').innerHTML, /處室會議/);
 
   // Chronological sort helper keeps earlier startTime first
   const sorted = ctx.sortEventsChronological([
@@ -249,7 +294,10 @@ function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], 
       deleteRow: (rowIdx) => { rows.splice(rowIdx - 1, 1); },
       getRange: (rowIdx, colIdx) => {
         const rangeObj = {
-          setValue: (v) => { rows[rowIdx - 1][colIdx - 1] = v; },
+          setValue: (v) => {
+            while (rows[rowIdx - 1].length < colIdx - 1) rows[rowIdx - 1].push('');
+            rows[rowIdx - 1][colIdx - 1] = v;
+          },
           setNumberFormat: (fmt) => { formats.set(`${rowIdx}:${colIdx}`, fmt); return rangeObj; },
           setFontWeight: () => rangeObj,
           setBackground: () => rangeObj,
@@ -348,44 +396,97 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
   const mainSheet = ctx.getSheet();
   assert.deepEqual(getSheets().map(s => s.getName()), ['會議資料', '異動紀錄', '管理者名單', '系統設定']);
 
-  // Create -> Update -> Delete flow logs every operation to 異動紀錄
-  const addRes = ctx.addEvent({
-    title: '校務發展會議',
+  // Missing password must be rejected on addEvent
+  const missingPassRes = ctx.addEvent({
+    title: '未設密碼會議',
     date: '2026-11-20',
     startTime: '09:00',
     endTime: '10:30',
     location: '第二會議室',
     department: '教務處',
-    category: '處室會議',
-    description: '討論期中評量',
+    category: '親師',
     password: ''
+  });
+  assert.equal(missingPassRes.status, 'error');
+  assert.equal(mainSheet._rows.length, 1);
+
+  // Create -> Update -> Delete flow logs every operation to 異動紀錄 & persists 15-col metadata
+  const addRes = ctx.addEvent({
+    title: '校務發展會議',
+    date: '2026-11-20',
+    startTime: '09:25',
+    endTime: '11:05',
+    periods: '第2節、第3節',
+    location: '第二會議室',
+    department: '教務處',
+    participants: '教務處、七年級導師',
+    category: '親師',
+    categoryBg: '#ffe4e6',
+    categoryText: '#9f1239',
+    description: '討論期中評量',
+    password: 'meetPass1'
   });
   assert.equal(addRes.status, 'success');
   assert.equal(mainSheet._rows.length, 2);
+  assert.equal(mainSheet._rows[0].length, 15);
+  assert.equal(mainSheet._rows[1].length, 15);
+
+  const fetchedEvents = ctx.getEvents();
+  assert.equal(fetchedEvents.length, 1);
+  assert.equal(fetchedEvents[0].periods, '第2節、第3節');
+  assert.equal(fetchedEvents[0].participants, '教務處、七年級導師');
+  assert.equal(fetchedEvents[0].categoryBg, '#ffe4e6');
+  assert.equal(fetchedEvents[0].categoryText, '#9f1239');
+  assert.equal(fetchedEvents[0].hasPassword, true);
+
+  // Wrong password cannot update or delete
+  const wrongUpdRes = ctx.updateEvent({
+    id: addRes.id,
+    title: '校務發展會議（偷改）',
+    date: '2026-11-21',
+    startTime: '10:20',
+    endTime: '12:00',
+    location: '第二會議室',
+    department: '教務處',
+    category: '親師',
+    password: 'wrong'
+  });
+  assert.equal(wrongUpdRes.status, 'error');
 
   const updRes = ctx.updateEvent({
     id: addRes.id,
     title: '校務發展會議（改期）',
     date: '2026-11-21',
-    startTime: '10:00',
-    endTime: '11:30',
+    startTime: '10:20',
+    endTime: '12:00',
+    periods: '第3節、第4節',
     location: '第二會議室',
     department: '教務處',
-    category: '處室會議',
+    participants: '教務處、八年級導師',
+    category: '親師',
+    categoryBg: '#ffe4e6',
+    categoryText: '#9f1239',
     description: '改為週六上午',
-    password: ''
+    password: 'meetPass1'
   });
   assert.equal(updRes.status, 'success');
   assert.equal(mainSheet._rows[1][1], '校務發展會議（改期）');
+  assert.equal(mainSheet._rows[1][11], '第3節、第4節');
+  assert.equal(mainSheet._rows[1][12], '教務處、八年級導師');
 
-  const delRes = ctx.deleteEvent({ id: addRes.id, password: '' });
+  const wrongDelRes = ctx.deleteEvent({ id: addRes.id, password: '' });
+  assert.equal(wrongDelRes.status, 'error');
+
+  const delRes = ctx.deleteEvent({ id: addRes.id, password: 'meetPass1' });
   assert.equal(delRes.status, 'success');
   assert.equal(mainSheet._rows.length, 1);
 
   const auditSheet = ss.getSheetByName('異動紀錄');
   assert.equal(auditSheet._rows.length, 4);
+  assert.equal(auditSheet._rows[0].length, 13);
   assert.deepEqual(auditSheet._rows.slice(1).map(r => r[1]), ['新增預約', '修改排程', '刪除排程']);
   assert.equal(auditSheet._rows[2][3], '校務發展會議（改期）');
+  assert.equal(auditSheet._rows[2][11], '第3節、第4節');
 
   // public ping reports sheet names, key/password readiness flags & current count WITHOUT leaking spreadsheetUrl or secrets
   ctx.doGet({ parameter: { action: 'ping' } });
