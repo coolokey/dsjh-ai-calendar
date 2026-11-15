@@ -1,6 +1,6 @@
 // ====================================================================
 // 校園智慧行事曆 Agent (AI 會議協作與智慧排程系統) - Google Apps Script 後端
-// 版本：3.5 (全面支援 Google Gemini 2.0/1.5 生成式 AI、完整 CRUD 與即時健康診斷)
+// 版本：4.0 (正式上線版：支援 Google Gemini 2.5 / 2.0 生成式 AI、完整 CRUD 與併發安全)
 // 授權：MIT License | 適用學校：桃園市立大溪國民中學 / 全國各級中小學
 // ====================================================================
 
@@ -361,8 +361,8 @@ function callGeminiAPI(prompt, systemInstruction) {
     throw new Error('未設定 GEMINI_API_KEY。請至 Apps Script「專案設定」→「指令碼屬性」新增 GEMINI_API_KEY。');
   }
 
-  // 支援的模型清單（優先使用 1.5-flash 或 2.0-flash）
-  var models = ['gemini-1.5-flash', 'gemini-2.0-flash', 'gemini-2.5-flash'];
+  // 優先使用最新穩定且低延遲之 Flash 模型，避免呼叫已下架模型造成延遲
+  var models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
   var preferredModel = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || models[0];
 
   var payload = {
@@ -406,12 +406,13 @@ function callGeminiAPI(prompt, systemInstruction) {
 
     if (code === 200) {
       var result = JSON.parse(resText);
-      if (result.candidates && result.candidates[0] && result.candidates[0].content) {
-        var rawText = result.candidates[0].content.parts[0].text;
+      var firstCandidate = result.candidates && result.candidates[0];
+      var firstPart = firstCandidate && firstCandidate.content && firstCandidate.content.parts && firstCandidate.content.parts[0];
+      if (firstPart && firstPart.text) {
         // 清除可能的 markdown 包裹
-        var cleanText = rawText.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
-        return cleanText;
+        return firstPart.text.trim().replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim();
       }
+      lastError = 'HTTP 200 但模型未回傳有效文字內容';
     } else {
       lastError = 'HTTP ' + code + ': ' + resText;
     }
@@ -521,11 +522,13 @@ function aiChatSchedule(userMessage) {
   });
   if (sensitiveInput_(JSON.stringify(events))) return { status: 'error', message: '場地資料可能含個資，請先由管理人員確認。' };
   var todayStr = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
+  var dayOfWeek = Utilities.formatDate(new Date(), 'Asia/Taipei', 'EEEE');
 
   var systemPrompt = 
-    "你是一位校園行事曆 AI 智慧排程顧問。\n" +
-    "今天是 " + todayStr + "。你手上有目前學校行事曆所有既定會議清單。\n" +
-    "請根據使用者的提問，分析空檔、判斷衝突或提供排程建議。\n" +
+    "你是一位桃園市立大溪國中的校園行事曆 AI 智慧排程顧問。\n" +
+    "今天是 " + todayStr + " (" + dayOfWeek + ")。你手上有目前學校行事曆所有既定會議清單。\n" +
+    "本校主要常用場地包括：學生活動中心、行政大樓3F教師研習中心、科技館1F視聽教室、科技館2F科技智慧教室、科技館2F科技創作教室、圖書館、校史室、新大樓1F視聽中心。\n" +
+    "請根據使用者的提問，分析空檔、判斷衝突或提供精準排程建議。\n" +
     "請輸出 JSON 物件：\n" +
     "{\n" +
     '  "reply": "給使用者的白話回覆，語氣親切專業",\n' +
