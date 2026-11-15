@@ -176,37 +176,50 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   ]);
   assert.equal(sorted[0].startTime, '08:30');
 
-  // Backend Google Sheet metadata hydrates Header link & Setup Modal card safely
+  // Backend Google Sheet metadata hydrates Header link, Setup Modal card & admin status badges safely
   ctx.applyBackendSheetPayload(ctx.getActiveGasUrl(), {
     status: 'success',
     spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/test-sheet/edit',
     spreadsheetName: '校園智慧行事曆資料庫 (AI Agent)',
     sheetName: '會議資料',
     auditSheetName: '異動紀錄',
+    adminSheetName: '管理者名單',
+    configSheetName: '系統設定',
+    hasGeminiApiKey: true,
+    geminiModel: 'gemini-2.5-flash',
+    isDefaultAdminPassword: true,
     eventCount: 1
   });
   assert.equal(elements.get('headerSheetLink').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
   assert.equal(elements.get('setupSheetOpenBtn').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
   assert.equal(elements.get('btnCopySheetUrl').disabled, false);
   assert.match(elements.get('backendSheetName').innerText, /校園智慧行事曆資料庫/);
-  assert.match(elements.get('backendSheetMetaText').innerText, /會議資料.*異動紀錄/);
+  assert.match(elements.get('backendSheetMetaText').innerText, /會議資料.*異動紀錄.*管理者名單.*系統設定/);
+  assert.match(elements.get('adminConfigKeyBadge').innerText, /AI 金鑰就緒/);
+  assert.match(elements.get('adminConfigPwdBadge').innerText, /admin888/);
 });
 
-test('backend spreadsheet organizes tabs cleanly and records full audit history on add, update, and delete', () => {
+function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
   const makeMockSheet = (name, initialRows = []) => {
     const rows = initialRows.map(r => [...r]);
+    const formats = new Map();
     const sheetObj = {
       _name: name,
+      _formats: formats,
       getName: () => sheetObj._name,
       setName: (n) => { sheetObj._name = n; },
       getParent: () => ss,
       getLastRow: () => rows.length,
       appendRow: (r) => rows.push([...r]),
-      getDataRange: () => ({ getValues: () => rows.map(r => [...r]) }),
+      getDataRange: () => ({
+        getValues: () => rows.map(r => [...r]),
+        getDisplayValues: () => rows.map(r => r.map(v => (v === undefined || v === null ? '' : String(v))))
+      }),
       deleteRow: (rowIdx) => { rows.splice(rowIdx - 1, 1); },
       getRange: (rowIdx, colIdx) => {
         const rangeObj = {
           setValue: (v) => { rows[rowIdx - 1][colIdx - 1] = v; },
+          setNumberFormat: (fmt) => { formats.set(`${rowIdx}:${colIdx}`, fmt); return rangeObj; },
           setFontWeight: () => rangeObj,
           setBackground: () => rangeObj,
           setFontColor: () => rangeObj
@@ -247,25 +260,39 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
     }
   };
 
-  const propsMap = new Map([['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'k']]);
-  let pingPayload = '';
+  const propsMap = new Map(initialProps);
+  const cacheMap = new Map();
+  let uuidCounter = 0;
+  let lastHttpJson = '';
   const ctx = vm.createContext({
     console,
     Utilities: {
-      getUuid: () => 'abcd1234-5678-90ef',
+      getUuid: () => `uuid-${++uuidCounter}-abcd1234`,
       formatDate: () => '2026-11-15 23:00:00',
       DigestAlgorithm: { SHA_256: 'SHA_256' },
       Charset: { UTF_8: 'UTF_8' },
-      computeDigest: () => []
+      computeDigest: (_alg, str) => {
+        if (!str) return [];
+        return [...Buffer.from(String(str), 'utf8')].map(b => (b > 127 ? b - 256 : b));
+      }
     },
     PropertiesService: {
       getScriptProperties: () => ({
         getProperty: (k) => (propsMap.has(k) ? propsMap.get(k) : null),
-        setProperty: (k, v) => propsMap.set(k, v)
+        setProperty: (k, v) => propsMap.set(k, v),
+        deleteProperty: (k) => propsMap.delete(k)
+      })
+    },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (k) => (cacheMap.has(k) ? cacheMap.get(k) : null),
+        put: (k, v) => cacheMap.set(k, String(v)),
+        remove: (k) => cacheMap.delete(k)
       })
     },
     SpreadsheetApp: {
       openById: (id) => (id === 'sheet-id-1' ? ss : null),
+      getActiveSpreadsheet: () => null,
       create: () => ss,
       flush: () => {}
     },
@@ -275,15 +302,20 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput: (txt) => ({
-        setMimeType: () => { pingPayload = txt; return txt; }
+        setMimeType: () => { lastHttpJson = txt; return txt; }
       })
     }
   });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../gas_code.gs'), 'utf8'), ctx);
+  return { ctx, ss, propsMap, getSheets: () => sheets, getLastHttpJson: () => JSON.parse(lastHttpJson) };
+}
 
-  // Initializing sheet moves 會議資料 first, creates 異動紀錄, and deletes blank 工作表1
+test('backend spreadsheet organizes tabs cleanly and records full audit history on add, update, and delete', () => {
+  const { ctx, ss, getSheets, getLastHttpJson } = createGasMockHarness();
+
+  // Initializing sheet moves 會議資料 first, creates 異動紀錄/管理者名單/系統設定, and deletes blank 工作表1
   const mainSheet = ctx.getSheet();
-  assert.deepEqual(sheets.map(s => s.getName()), ['會議資料', '異動紀錄']);
+  assert.deepEqual(getSheets().map(s => s.getName()), ['會議資料', '異動紀錄', '管理者名單', '系統設定']);
 
   // Create -> Update -> Delete flow logs every operation to 異動紀錄
   const addRes = ctx.addEvent({
@@ -324,13 +356,89 @@ test('backend spreadsheet organizes tabs cleanly and records full audit history 
   assert.deepEqual(auditSheet._rows.slice(1).map(r => r[1]), ['新增預約', '修改排程', '刪除排程']);
   assert.equal(auditSheet._rows[2][3], '校務發展會議（改期）');
 
-  // ping reports spreadsheet URL, name, sheet names, and current count
+  // ping reports spreadsheet URL, name, sheet names, and current count without leaking secrets
   ctx.doGet({ parameter: { action: 'ping' } });
-  const ping = JSON.parse(pingPayload);
+  const ping = getLastHttpJson();
   assert.equal(ping.status, 'success');
   assert.equal(ping.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
   assert.equal(ping.sheetName, '會議資料');
   assert.equal(ping.auditSheetName, '異動紀錄');
+  assert.equal(ping.adminSheetName, '管理者名單');
+  assert.equal(ping.configSheetName, '系統設定');
+  assert.equal(ping.hasGeminiApiKey, true);
+  assert.equal(ping.isDefaultAdminPassword, true);
   assert.equal(ping.eventCount, 0);
+  assert.doesNotMatch(JSON.stringify(ping), /seed-key-123|admin888/);
+});
+
+test('admin credentials and Gemini API key sync bidirectionally with spreadsheet and protect sensitive settings', () => {
+  const { ctx, ss, propsMap, getLastHttpJson } = createGasMockHarness([['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]);
+  ctx.getSheet();
+
+  const adminSheet = ss.getSheetByName('管理者名單');
+  const cfgSheet = ss.getSheetByName('系統設定');
+  assert.equal(adminSheet._rows[1][0], 'admin');
+  assert.equal(adminSheet._rows[1][2], 'admin888');
+  assert.equal(adminSheet._formats.get('2:3'), '@');
+  assert.deepEqual(cfgSheet._rows.slice(1).map(r => r[0]), ['ADMIN_PASSWORD', 'GEMINI_API_KEY', 'GEMINI_MODEL']);
+  assert.equal(cfgSheet._rows[2][1], 'seed-key-123');
+  assert.equal(ctx.getGeminiApiKey(), 'seed-key-123');
+
+  // Editing API key directly in Google Sheet 系統設定 takes immediate precedence
+  cfgSheet._rows[2][1] = 'AIzaDirectSheetEdit999';
+  assert.equal(ctx.getGeminiApiKey(), 'AIzaDirectSheetEdit999');
+
+  // Login with default admin888 succeeds with isDefault=true, but cannot change API key before changing password
+  const loginRes = ctx.loginAdmin('admin888');
+  assert.equal(loginRes.status, 'success');
+  assert.equal(loginRes.isDefault, true);
+  const blockedSave = ctx.saveAdminSettings(loginRes.token, { geminiApiKey: 'AIzaShouldFail' });
+  assert.equal(blockedSave.status, 'error');
+  assert.match(blockedSave.message, /預設密碼/);
+
+  // Changing admin password writes to 管理者名單, 系統設定, and ScriptProperties
+  const pwdRes = ctx.changeAdminPassword(loginRes.token, 'admin888', 'DaxiAdmin2026');
+  assert.equal(pwdRes.status, 'success');
+  assert.equal(adminSheet._rows[1][2], 'DaxiAdmin2026');
+  assert.equal(cfgSheet._rows[1][1], 'DaxiAdmin2026');
+  assert.equal(propsMap.get('ADMIN_PASSWORD'), 'DaxiAdmin2026');
+
+  // After changing password, admin can update GEMINI_API_KEY & GEMINI_MODEL and clear key securely
+  const saveRes = ctx.saveAdminSettings(loginRes.token, { geminiApiKey: 'AIzaUpdatedFromUI777', geminiModel: 'gemini-2.0-flash' });
+  assert.equal(saveRes.status, 'success');
+  assert.equal(cfgSheet._rows[2][1], 'AIzaUpdatedFromUI777');
+  assert.equal(cfgSheet._rows[3][1], 'gemini-2.0-flash');
+  assert.equal(ctx.getGeminiApiKey(), 'AIzaUpdatedFromUI777');
+
+  // ping and getAdminSettings never leak raw key or password
+  ctx.doPost({ postData: { contents: JSON.stringify({ action: 'getAdminSettings', token: loginRes.token }) } });
+  const adminStatus = getLastHttpJson();
+  assert.equal(adminStatus.status, 'success');
+  assert.equal(adminStatus.hasGeminiApiKey, true);
+  assert.equal(adminStatus.isDefaultAdminPassword, false);
+  assert.doesNotMatch(JSON.stringify(adminStatus), /AIzaUpdatedFromUI777|DaxiAdmin2026/);
+
+  // Custom admin password can delete a password-protected event and log admin override
+  const lockedAdd = ctx.addEvent({
+    title: '加密測試會議',
+    date: '2026-12-01',
+    startTime: '09:00',
+    endTime: '10:00',
+    location: '圖書館',
+    department: '教務處',
+    category: '處室會議',
+    description: '',
+    password: 'eventSecret1'
+  });
+  assert.equal(ctx.deleteEvent({ id: lockedAdd.id, password: 'wrong' }).status, 'error');
+  assert.equal(ctx.deleteEvent({ id: lockedAdd.id, password: 'DaxiAdmin2026' }).status, 'success');
+  const auditRows = ss.getSheetByName('異動紀錄')._rows;
+  assert.equal(auditRows[auditRows.length - 1][1], '刪除排程 (管理者)');
+
+  // 5 wrong login attempts trigger rate lock
+  for (let i = 0; i < 5; i++) ctx.loginAdmin('bad-pass');
+  const lockedLogin = ctx.loginAdmin('DaxiAdmin2026');
+  assert.equal(lockedLogin.status, 'error');
+  assert.match(lockedLogin.message, /暫時鎖定|15 分鐘/);
 });
 

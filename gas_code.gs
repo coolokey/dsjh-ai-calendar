@@ -6,6 +6,36 @@
 
 var SHEET_NAME = '會議資料';
 var AUDIT_SHEET_NAME = '異動紀錄';
+var ADMIN_SHEET_NAME = '管理者名單';
+var CONFIG_SHEET_NAME = '系統設定';
+var DEFAULT_ADMIN_PASSWORD = 'admin888';
+var ADMIN_SESSION_EXPIRE_SEC = 7200;
+var LOGIN_MAX_ATTEMPTS = 5;
+var LOGIN_LOCK_SECONDS = 900;
+
+function readSheetValues_(sheet) {
+  if (!sheet) return [];
+  var rng = sheet.getDataRange();
+  if (rng && typeof rng.getDisplayValues === 'function') {
+    return rng.getDisplayValues();
+  }
+  return rng ? rng.getValues() : [];
+}
+
+function setTextFormatIfPossible_(cell) {
+  if (cell && typeof cell.setNumberFormat === 'function') {
+    cell.setNumberFormat('@');
+  }
+}
+
+function getScriptCacheSafe_() {
+  try {
+    if (typeof CacheService !== 'undefined' && CacheService && typeof CacheService.getScriptCache === 'function') {
+      return CacheService.getScriptCache();
+    }
+  } catch (e) {}
+  return null;
+}
 
 // ── 取得或自動建立 Google 試算表資料庫 ─────────────────────────────────
 function getSpreadsheet_() {
@@ -18,6 +48,15 @@ function getSpreadsheet_() {
     } catch (e) {
       ss = null;
     }
+  }
+  if (!ss) {
+    try {
+      var active = typeof SpreadsheetApp.getActiveSpreadsheet === 'function' ? SpreadsheetApp.getActiveSpreadsheet() : null;
+      if (active) {
+        props.setProperty('SPREADSHEET_ID', active.getId());
+        return active;
+      }
+    } catch (e) {}
   }
   if (!ss) {
     ss = SpreadsheetApp.create('校園智慧行事曆資料庫 (AI Agent)');
@@ -44,6 +83,149 @@ function getAuditSheet_(ss) {
     auditSheet.setColumnWidth(11, 260);
   }
   return auditSheet;
+}
+
+function getConfigValueFromSheet_(ss, targetKey) {
+  if (!ss) return '';
+  var cfgSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+  if (!cfgSheet || cfgSheet.getLastRow() < 2) return '';
+  var rows = readSheetValues_(cfgSheet);
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim() === targetKey) {
+      return String(rows[i][1] === undefined || rows[i][1] === null ? '' : rows[i][1]).trim();
+    }
+  }
+  return '';
+}
+
+function upsertConfigRowInSheet_(cfgSheet, targetKey, val, desc) {
+  if (!cfgSheet) return;
+  var rows = readSheetValues_(cfgSheet);
+  for (var i = 1; i < rows.length; i++) {
+    if (String(rows[i][0] || '').trim() === targetKey) {
+      var cell = cfgSheet.getRange(i + 1, 2);
+      setTextFormatIfPossible_(cell);
+      cell.setValue(val);
+      return;
+    }
+  }
+  cfgSheet.appendRow([targetKey, val, desc || '']);
+  var lr = cfgSheet.getLastRow();
+  setTextFormatIfPossible_(cfgSheet.getRange(lr, 1));
+  setTextFormatIfPossible_(cfgSheet.getRange(lr, 2));
+}
+
+function ensureConfigSheets_(ss) {
+  if (!ss) return;
+  var props = PropertiesService.getScriptProperties();
+
+  // 1. 讀取既有管理密碼（管理者名單 -> 系統設定 -> ScriptProperties -> 預設 admin888）
+  var adminSheet = ss.getSheetByName(ADMIN_SHEET_NAME);
+  var cfgSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+  var currentPwd = '';
+
+  if (adminSheet && adminSheet.getLastRow() >= 2) {
+    var adminRows = readSheetValues_(adminSheet);
+    var accCol = 0, pwdCol = 2;
+    var h = adminRows[0] || [];
+    for (var c = 0; c < h.length; c++) {
+      var colName = String(h[c] || '').trim();
+      if (colName === '帳號') accCol = c;
+      else if (colName === '密碼') pwdCol = c;
+    }
+    for (var r = 1; r < adminRows.length; r++) {
+      if (String(adminRows[r][accCol] || '').trim().toLowerCase() === 'admin') {
+        currentPwd = String(adminRows[r][pwdCol] || '').trim();
+        break;
+      }
+    }
+  }
+  if (!currentPwd && cfgSheet) {
+    currentPwd = getConfigValueFromSheet_(ss, 'ADMIN_PASSWORD');
+  }
+  if (!currentPwd) {
+    currentPwd = String(props.getProperty('ADMIN_PASSWORD') || '').trim() || DEFAULT_ADMIN_PASSWORD;
+  }
+
+  // 2. 確保「管理者名單」分頁存在並含 admin 列
+  if (!adminSheet) {
+    adminSheet = ss.insertSheet(ADMIN_SHEET_NAME);
+    var adminHeader = ['帳號', '姓名', '密碼', '說明'];
+    adminSheet.appendRow(adminHeader);
+    adminSheet.getRange(1, 1, 1, adminHeader.length)
+              .setFontWeight('bold')
+              .setBackground('#1e293b')
+              .setFontColor('#ffffff');
+    adminSheet.setFrozenRows(1);
+    adminSheet.setColumnWidth(1, 120);
+    adminSheet.setColumnWidth(2, 160);
+    adminSheet.setColumnWidth(3, 180);
+    adminSheet.setColumnWidth(4, 320);
+    adminSheet.appendRow(['admin', '校務行政管理者', currentPwd, '系統最高管理權限（預設 admin888，可直接於此查看或修改密碼）']);
+    setTextFormatIfPossible_(adminSheet.getRange(2, 1));
+    setTextFormatIfPossible_(adminSheet.getRange(2, 3));
+  } else {
+    var existingRows = readSheetValues_(adminSheet);
+    var hasAdminRow = false;
+    for (var ar = 1; ar < existingRows.length; ar++) {
+      if (String(existingRows[ar][0] || '').trim().toLowerCase() === 'admin') {
+        hasAdminRow = true;
+        break;
+      }
+    }
+    if (!hasAdminRow) {
+      adminSheet.appendRow(['admin', '校務行政管理者', currentPwd, '系統最高管理權限（預設 admin888，可直接於此查看或修改密碼）']);
+      var adminLast = adminSheet.getLastRow();
+      setTextFormatIfPossible_(adminSheet.getRange(adminLast, 1));
+      setTextFormatIfPossible_(adminSheet.getRange(adminLast, 3));
+    }
+  }
+
+  // 3. 確保「系統設定」分頁存在並含 ADMIN_PASSWORD、GEMINI_API_KEY、GEMINI_MODEL 列
+  var propGeminiKey = String(props.getProperty('GEMINI_API_KEY') || '').trim();
+  var propGeminiModel = String(props.getProperty('GEMINI_MODEL') || '').trim() || 'gemini-2.5-flash';
+
+  if (!cfgSheet) {
+    cfgSheet = ss.insertSheet(CONFIG_SHEET_NAME);
+    var cfgHeader = ['設定項目', '設定值', '說明'];
+    cfgSheet.appendRow(cfgHeader);
+    cfgSheet.getRange(1, 1, 1, cfgHeader.length)
+            .setFontWeight('bold')
+            .setBackground('#b45309')
+            .setFontColor('#ffffff');
+    cfgSheet.setFrozenRows(1);
+    cfgSheet.setColumnWidth(1, 190);
+    cfgSheet.setColumnWidth(2, 320);
+    cfgSheet.setColumnWidth(3, 380);
+
+    var defaults = [
+      ['ADMIN_PASSWORD', currentPwd, '校務行政管理密碼（管理者可直接於「管理者名單」或本工作表查看與修改；預設 admin888）'],
+      ['GEMINI_API_KEY', propGeminiKey, 'Google Gemini API 金鑰（可直接貼入此格或由網站管理者設定寫入；未填時 AI 功能無法使用）'],
+      ['GEMINI_MODEL', propGeminiModel, 'Gemini 優先模型（預設 gemini-2.5-flash，異常時自動備援 gemini-2.0-flash）']
+    ];
+    for (var d = 0; d < defaults.length; d++) {
+      cfgSheet.appendRow(defaults[d]);
+      var rowNo = cfgSheet.getLastRow();
+      setTextFormatIfPossible_(cfgSheet.getRange(rowNo, 1));
+      setTextFormatIfPossible_(cfgSheet.getRange(rowNo, 2));
+    }
+  } else {
+    var cfgRows = readSheetValues_(cfgSheet);
+    var existingKeys = {};
+    for (var cr = 1; cr < cfgRows.length; cr++) {
+      var k = String(cfgRows[cr][0] || '').trim();
+      if (k) existingKeys[k] = cr + 1;
+    }
+    if (!existingKeys['ADMIN_PASSWORD']) {
+      upsertConfigRowInSheet_(cfgSheet, 'ADMIN_PASSWORD', currentPwd, '校務行政管理密碼（管理者可直接於「管理者名單」或本工作表查看與修改；預設 admin888）');
+    }
+    if (!existingKeys['GEMINI_API_KEY']) {
+      upsertConfigRowInSheet_(cfgSheet, 'GEMINI_API_KEY', propGeminiKey, 'Google Gemini API 金鑰（可直接貼入此格或由網站管理者設定寫入；未填時 AI 功能無法使用）');
+    }
+    if (!existingKeys['GEMINI_MODEL']) {
+      upsertConfigRowInSheet_(cfgSheet, 'GEMINI_MODEL', propGeminiModel, 'Gemini 優先模型（預設 gemini-2.5-flash，異常時自動備援 gemini-2.0-flash）');
+    }
+  }
 }
 
 function appendAuditLog_(actionType, ev) {
@@ -96,6 +278,7 @@ function getSheet() {
 
   try {
     getAuditSheet_(ss);
+    ensureConfigSheets_(ss);
     var sheets = ss.getSheets();
     if (sheets.length > 0 && sheets[0].getName() !== SHEET_NAME) {
       ss.setActiveSheet(sheet);
@@ -309,6 +492,18 @@ function addEvent(payload) {
   }
 }
 
+function authorizeEventMutation_(storedHash, password, adminToken) {
+  if (!storedHash) return { allowed: true, usedAdmin: false };
+  var inputHash = hashPassword(password);
+  if (storedHash === inputHash) return { allowed: true, usedAdmin: false };
+  var adminPwd = getAdminPassword_();
+  if (adminPwd && adminPwd !== DEFAULT_ADMIN_PASSWORD) {
+    if (password && password === adminPwd) return { allowed: true, usedAdmin: true };
+    if (adminToken && verifyAdminSession_(adminToken)) return { allowed: true, usedAdmin: true };
+  }
+  return { allowed: false, usedAdmin: false };
+}
+
 // ── 更新/修改會議事件 (支援密碼驗證與密碼變更) ─────────────────────────
 function updateEvent(payload) {
   var lock = LockService.getScriptLock();
@@ -359,10 +554,8 @@ function updateEvent(payload) {
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][0]) === id) {
         var storedHash = String(data[i][9]);
-        var inputHash = hashPassword(password);
-
-        // 若原設定密碼則需檢核
-        if (storedHash && storedHash !== inputHash) {
+        var auth = authorizeEventMutation_(storedHash, password, payload.adminToken);
+        if (!auth.allowed) {
           return { status: 'error', message: '驗證密碼不正確，無法修改此筆會議。' };
         }
 
@@ -380,7 +573,7 @@ function updateEvent(payload) {
           sheet.getRange(rowIdx, 10).setValue(hashPassword(String(payload.newPassword).trim()));
         }
 
-        appendAuditLog_('修改排程', {
+        appendAuditLog_(auth.usedAdmin ? '修改排程 (管理者)' : '修改排程', {
           id: id,
           title: title,
           date: date,
@@ -423,15 +616,14 @@ function deleteEvent(payload) {
     for (var i = 1; i < data.length; i++) {
       if (String(data[i][0]) === id) {
         var storedHash = String(data[i][9]);
-        var inputHash = hashPassword(password);
-
-        if (storedHash && storedHash !== inputHash) {
+        var auth = authorizeEventMutation_(storedHash, password, payload.adminToken);
+        if (!auth.allowed) {
           return { status: 'error', message: '刪除密碼不正確，無法刪除此筆會議。' };
         }
 
         var oldRow = data[i];
         sheet.deleteRow(i + 1);
-        appendAuditLog_('刪除排程', {
+        appendAuditLog_(auth.usedAdmin ? '刪除排程 (管理者)' : '刪除排程', {
           id: id,
           title: oldRow[1],
           date: oldRow[2],
@@ -452,25 +644,357 @@ function deleteEvent(payload) {
   }
 }
 
+// ====================================================================
+// ── 管理者帳密與試算表「系統設定」模組（比照 AI 社團選社系統） ─────
+// ====================================================================
+
+function getAdminPassword_() {
+  var sheetAdminPwd = '';
+  var cfgAdminPwd = '';
+  try {
+    var ss = getSpreadsheet_();
+    var adminSheet = ss.getSheetByName(ADMIN_SHEET_NAME);
+    if (!adminSheet || !ss.getSheetByName(CONFIG_SHEET_NAME)) {
+      ensureConfigSheets_(ss);
+      adminSheet = ss.getSheetByName(ADMIN_SHEET_NAME);
+    }
+    if (adminSheet && adminSheet.getLastRow() >= 2) {
+      var rows = readSheetValues_(adminSheet);
+      var header = rows[0] || [];
+      var accCol = 0, pwdCol = 2;
+      for (var c = 0; c < header.length; c++) {
+        var h = String(header[c] || '').trim();
+        if (h === '帳號') accCol = c;
+        else if (h === '密碼') pwdCol = c;
+      }
+      for (var r = 1; r < rows.length; r++) {
+        if (String(rows[r][accCol] || '').trim().toLowerCase() === 'admin') {
+          sheetAdminPwd = String(rows[r][pwdCol] || '').trim();
+          break;
+        }
+      }
+    }
+    cfgAdminPwd = getConfigValueFromSheet_(ss, 'ADMIN_PASSWORD');
+  } catch (e) {
+    console.warn('讀取試算表管理者密碼失敗，改用屬性服務：', e);
+  }
+
+  if (cfgAdminPwd && cfgAdminPwd !== DEFAULT_ADMIN_PASSWORD && (!sheetAdminPwd || sheetAdminPwd === DEFAULT_ADMIN_PASSWORD)) {
+    return cfgAdminPwd;
+  }
+  if (sheetAdminPwd) return sheetAdminPwd;
+  if (cfgAdminPwd) return cfgAdminPwd;
+
+  var propPwd = String(PropertiesService.getScriptProperties().getProperty('ADMIN_PASSWORD') || '').trim();
+  return propPwd || DEFAULT_ADMIN_PASSWORD;
+}
+
+function setAdminPasswordInSpreadsheet_(newPwd) {
+  var cleanPwd = String(newPwd || '').trim();
+  var props = PropertiesService.getScriptProperties();
+  props.setProperty('ADMIN_PASSWORD', cleanPwd);
+
+  var ss = getSpreadsheet_();
+  ensureConfigSheets_(ss);
+
+  var adminSheet = ss.getSheetByName(ADMIN_SHEET_NAME);
+  if (adminSheet) {
+    var adminRows = readSheetValues_(adminSheet);
+    var accCol = 0, pwdCol = 2, foundRow = -1;
+    if (adminRows.length >= 1) {
+      var header = adminRows[0] || [];
+      for (var c = 0; c < header.length; c++) {
+        var colName = String(header[c] || '').trim();
+        if (colName === '帳號') accCol = c;
+        else if (colName === '密碼') pwdCol = c;
+      }
+      for (var r = 1; r < adminRows.length; r++) {
+        if (String(adminRows[r][accCol] || '').trim().toLowerCase() === 'admin') {
+          foundRow = r + 1;
+          break;
+        }
+      }
+    }
+    if (foundRow > 0) {
+      var cell = adminSheet.getRange(foundRow, pwdCol + 1);
+      setTextFormatIfPossible_(cell);
+      cell.setValue(cleanPwd);
+    } else {
+      adminSheet.appendRow(['admin', '校務行政管理者', cleanPwd, '系統最高管理權限']);
+      var lr = adminSheet.getLastRow();
+      setTextFormatIfPossible_(adminSheet.getRange(lr, accCol + 1));
+      setTextFormatIfPossible_(adminSheet.getRange(lr, pwdCol + 1));
+    }
+  }
+
+  var cfgSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+  if (cfgSheet) {
+    upsertConfigRowInSheet_(cfgSheet, 'ADMIN_PASSWORD', cleanPwd, '校務行政管理密碼（管理者可直接於「管理者名單」或本工作表查看與修改；預設 admin888）');
+  }
+}
+
+function checkLoginRateLimit_(scope, account) {
+  var cache = getScriptCacheSafe_();
+  if (!cache) return { allowed: true };
+  var key = 'LOGIN_FAIL_' + scope + '_' + String(account || '').trim().toLowerCase();
+  var raw = cache.get(key);
+  if (!raw) return { allowed: true };
+  try {
+    var info = JSON.parse(raw);
+    if ((info.count || 0) >= LOGIN_MAX_ATTEMPTS) {
+      return {
+        allowed: false,
+        message: '密碼連續錯誤達 ' + LOGIN_MAX_ATTEMPTS + ' 次，請稍候 15 分鐘再試，或開啟試算表「管理者名單」確認密碼。'
+      };
+    }
+  } catch (e) {}
+  return { allowed: true };
+}
+
+function recordLoginFailure_(scope, account) {
+  var cache = getScriptCacheSafe_();
+  var count = 0;
+  var key = 'LOGIN_FAIL_' + scope + '_' + String(account || '').trim().toLowerCase();
+  if (cache) {
+    try {
+      var raw = cache.get(key);
+      if (raw) count = Number(JSON.parse(raw).count) || 0;
+    } catch (e) {}
+    count += 1;
+    cache.put(key, JSON.stringify({ count: count, ts: Date.now() }), LOGIN_LOCK_SECONDS);
+  } else {
+    count = 1;
+  }
+  return { count: count, remaining: Math.max(0, LOGIN_MAX_ATTEMPTS - count) };
+}
+
+function clearLoginFailures_(scope, account) {
+  var cache = getScriptCacheSafe_();
+  if (!cache) return;
+  try {
+    cache.remove('LOGIN_FAIL_' + scope + '_' + String(account || '').trim().toLowerCase());
+  } catch (e) {}
+}
+
+function verifyAdminSession_(token) {
+  if (!token) return false;
+  var cache = getScriptCacheSafe_();
+  if (!cache) return false;
+  return cache.get('ADMIN_SESSION_' + String(token).trim()) === 'ACTIVE';
+}
+
+function checkAdminAuth_(token, requireCustomPassword) {
+  if (!verifyAdminSession_(token)) {
+    return { ok: false, message: '403 Unauthorized：管理者登入階段已過期或無效，請重新登入。' };
+  }
+  if (requireCustomPassword && getAdminPassword_() === DEFAULT_ADMIN_PASSWORD) {
+    return { ok: false, message: '基於資安規範，請先將預設密碼 admin888 修改為 8 碼以上專屬密碼！' };
+  }
+  return { ok: true };
+}
+
+function loginAdmin(password) {
+  var cleanInput = String(password === undefined || password === null ? '' : password).trim();
+  if (!cleanInput) {
+    return { status: 'error', message: '請輸入管理者密碼！' };
+  }
+  var rateCheck = checkLoginRateLimit_('admin', 'admin');
+  if (!rateCheck.allowed) {
+    return { status: 'error', message: rateCheck.message };
+  }
+
+  var realPwd = getAdminPassword_();
+  if (cleanInput === realPwd) {
+    clearLoginFailures_('admin', 'admin');
+    var adminToken = Utilities.getUuid();
+    var cache = getScriptCacheSafe_();
+    if (cache) {
+      cache.put('ADMIN_SESSION_' + adminToken, 'ACTIVE', ADMIN_SESSION_EXPIRE_SEC);
+    }
+    return {
+      status: 'success',
+      token: adminToken,
+      isDefault: (realPwd === DEFAULT_ADMIN_PASSWORD),
+      hasGeminiApiKey: Boolean(getGeminiApiKey()),
+      geminiModel: getGeminiPreferredModel_()
+    };
+  }
+
+  var fail = recordLoginFailure_('admin', 'admin');
+  return {
+    status: 'error',
+    message: fail.remaining > 0
+      ? '管理密碼錯誤！剩餘嘗試次數：' + fail.remaining + ' 次（可至 Google 試算表「管理者名單」查看或修改）。'
+      : '密碼連續錯誤達 ' + LOGIN_MAX_ATTEMPTS + ' 次，請稍候 15 分鐘再試，或至試算表「管理者名單」確認密碼。'
+  };
+}
+
+function changeAdminPassword(token, oldPwd, newPwd) {
+  var auth = checkAdminAuth_(token, false);
+  if (!auth.ok) return { status: 'error', message: auth.message };
+
+  var cleanOld = String(oldPwd === undefined || oldPwd === null ? '' : oldPwd).trim();
+  var cleanNew = String(newPwd === undefined || newPwd === null ? '' : newPwd).trim();
+  var realPwd = getAdminPassword_();
+
+  if (cleanOld !== realPwd) {
+    return { status: 'error', message: '目前舊密碼不正確！' };
+  }
+  if (!cleanNew || cleanNew.length < 8 || cleanNew === DEFAULT_ADMIN_PASSWORD) {
+    return { status: 'error', message: '新密碼長度須至少 8 碼，且不可使用預設密碼 admin888！' };
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '伺服器繁忙中，請稍後再試。' };
+  }
+  try {
+    setAdminPasswordInSpreadsheet_(cleanNew);
+    appendAuditLog_('更新系統設定', {
+      id: 'SYSTEM',
+      title: '變更管理者密碼（已同步寫入管理者名單與系統設定）',
+      date: Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'),
+      startTime: Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm'),
+      endTime: Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm'),
+      location: 'Google 試算表',
+      department: '系統管理',
+      category: '資安設定',
+      description: '管理者密碼已更新（不紀錄密碼明文）'
+    });
+    SpreadsheetApp.flush();
+    return {
+      status: 'success',
+      isDefaultAdminPassword: false,
+      message: '管理密碼修改成功，已同步寫入 Google 試算表「管理者名單」與「系統設定」！'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getAdminSettings(token) {
+  var auth = checkAdminAuth_(token, false);
+  if (!auth.ok) return { status: 'error', message: auth.message };
+
+  var sheet = getSheet();
+  var ss = sheet.getParent();
+  return {
+    status: 'success',
+    hasGeminiApiKey: Boolean(getGeminiApiKey()),
+    geminiModel: getGeminiPreferredModel_(),
+    isDefaultAdminPassword: (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD),
+    spreadsheetUrl: ss ? ss.getUrl() : '',
+    spreadsheetName: ss ? ss.getName() : '',
+    sheetName: SHEET_NAME,
+    auditSheetName: AUDIT_SHEET_NAME,
+    adminSheetName: ADMIN_SHEET_NAME,
+    configSheetName: CONFIG_SHEET_NAME,
+    eventCount: Math.max(0, sheet.getLastRow() - 1)
+  };
+}
+
+function saveAdminSettings(token, newSettings) {
+  var auth = checkAdminAuth_(token, true);
+  if (!auth.ok) return { status: 'error', message: auth.message };
+
+  newSettings = newSettings || {};
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+  } catch (e) {
+    return { status: 'error', message: '伺服器繁忙中，請稍後再試。' };
+  }
+
+  try {
+    var ss = getSpreadsheet_();
+    ensureConfigSheets_(ss);
+    var cfgSheet = ss.getSheetByName(CONFIG_SHEET_NAME);
+    var props = PropertiesService.getScriptProperties();
+
+    var keyActionDesc = '';
+    if (newSettings.clearGeminiApiKey === true) {
+      if (typeof props.deleteProperty === 'function') props.deleteProperty('GEMINI_API_KEY');
+      else props.setProperty('GEMINI_API_KEY', '');
+      upsertConfigRowInSheet_(cfgSheet, 'GEMINI_API_KEY', '', 'Google Gemini API 金鑰（可直接貼入此格或由網站管理者設定寫入；未填時 AI 功能無法使用）');
+      keyActionDesc = '已清除 Gemini API 金鑰';
+    } else if (newSettings.geminiApiKey !== undefined && String(newSettings.geminiApiKey).trim() !== '') {
+      var cleanKey = String(newSettings.geminiApiKey).trim();
+      props.setProperty('GEMINI_API_KEY', cleanKey);
+      upsertConfigRowInSheet_(cfgSheet, 'GEMINI_API_KEY', cleanKey, 'Google Gemini API 金鑰（可直接貼入此格或由網站管理者設定寫入；未填時 AI 功能無法使用）');
+      keyActionDesc = '已更新 Gemini API 金鑰';
+    }
+
+    var allowedModels = { 'gemini-2.5-flash': true, 'gemini-2.0-flash': true };
+    if (newSettings.geminiModel !== undefined && String(newSettings.geminiModel).trim() !== '') {
+      var cleanModel = String(newSettings.geminiModel).trim();
+      if (!allowedModels[cleanModel]) {
+        return { status: 'error', message: '不支援的 Gemini 模型選項。' };
+      }
+      props.setProperty('GEMINI_MODEL', cleanModel);
+      upsertConfigRowInSheet_(cfgSheet, 'GEMINI_MODEL', cleanModel, 'Gemini 優先模型（預設 gemini-2.5-flash，異常時自動備援 gemini-2.0-flash）');
+    }
+
+    var activeModel = getGeminiPreferredModel_();
+    appendAuditLog_('更新系統設定', {
+      id: 'SYSTEM',
+      title: '更新系統設定（模型：' + activeModel + '）',
+      date: Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd'),
+      startTime: Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm'),
+      endTime: Utilities.formatDate(new Date(), 'Asia/Taipei', 'HH:mm'),
+      location: 'Google 試算表',
+      department: '系統管理',
+      category: '系統設定',
+      description: keyActionDesc || '已更新優先模型設定'
+    });
+    SpreadsheetApp.flush();
+
+    return {
+      status: 'success',
+      hasGeminiApiKey: Boolean(getGeminiApiKey()),
+      geminiModel: activeModel,
+      isDefaultAdminPassword: false,
+      message: '管理者設定已同步儲存至 Google 試算表「系統設定」並立即生效！'
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 
 // ====================================================================
 // ── GEMINI 生成式 AI 整合模組 ────────────────────────────────────────
 // ====================================================================
 
 function getGeminiApiKey() {
+  try {
+    var ss = getSpreadsheet_();
+    var sheetVal = getConfigValueFromSheet_(ss, 'GEMINI_API_KEY');
+    if (sheetVal) return sheetVal;
+  } catch (e) {}
   var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
-  return key ? key.trim() : '';
+  return key ? String(key).trim() : '';
+}
+
+function getGeminiPreferredModel_() {
+  try {
+    var ss = getSpreadsheet_();
+    var sheetModel = getConfigValueFromSheet_(ss, 'GEMINI_MODEL');
+    if (sheetModel) return sheetModel;
+  } catch (e) {}
+  return String(PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || '').trim() || 'gemini-2.5-flash';
 }
 
 function callGeminiAPI(prompt, systemInstruction) {
   var apiKey = getGeminiApiKey();
   if (!apiKey) {
-    throw new Error('未設定 GEMINI_API_KEY。請至 Apps Script「專案設定」→「指令碼屬性」新增 GEMINI_API_KEY。');
+    throw new Error('未設定 GEMINI_API_KEY。請至網站右上角「設定 → 管理者設定」或後台 Google 試算表「系統設定」分頁填入 GEMINI_API_KEY。');
   }
 
   // 優先使用最新穩定且低延遲之 Flash 模型，避免呼叫已下架模型造成延遲
   var models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
-  var preferredModel = PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || models[0];
+  var preferredModel = getGeminiPreferredModel_();
 
   var payload = {
     contents: [
@@ -709,17 +1233,23 @@ function doGet(e) {
       );
       responseData = { status: 'success', data: c };
     } else if (action === 'ping') {
-      var hasApiKey = Boolean(getGeminiApiKey());
       var sheet = getSheet();
       var ss = sheet.getParent();
+      var hasApiKey = Boolean(getGeminiApiKey());
+      var geminiModel = getGeminiPreferredModel_();
+      var isDefaultAdmin = (getAdminPassword_() === DEFAULT_ADMIN_PASSWORD);
       responseData = {
         status: 'success',
         message: '校園智慧行事曆後端服務運行正常',
         hasGeminiApiKey: hasApiKey,
+        geminiModel: geminiModel,
+        isDefaultAdminPassword: isDefaultAdmin,
         spreadsheetUrl: ss ? ss.getUrl() : '',
         spreadsheetName: ss ? ss.getName() : '',
         sheetName: SHEET_NAME,
         auditSheetName: AUDIT_SHEET_NAME,
+        adminSheetName: ADMIN_SHEET_NAME,
+        configSheetName: CONFIG_SHEET_NAME,
         eventCount: Math.max(0, sheet.getLastRow() - 1)
       };
     } else {
@@ -747,6 +1277,14 @@ function doPost(e) {
       responseData = updateEvent(payload);
     } else if (action === 'deleteEvent') {
       responseData = deleteEvent(payload);
+    } else if (action === 'loginAdmin') {
+      responseData = loginAdmin(payload.password);
+    } else if (action === 'changeAdminPassword') {
+      responseData = changeAdminPassword(payload.token, payload.oldPassword, payload.newPassword);
+    } else if (action === 'getAdminSettings') {
+      responseData = getAdminSettings(payload.token);
+    } else if (action === 'saveAdminSettings') {
+      responseData = saveAdminSettings(payload.token, payload.settings);
     } else if (action === 'aiExtractEvent') {
       responseData = aiExtractEvent(payload.text);
     } else if (action === 'aiGenerateAgenda') {

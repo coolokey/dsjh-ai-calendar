@@ -767,7 +767,7 @@
               <span>後台雲端試算表資料庫</span>
             </div>
             <p id="backendSheetName" class="text-xs font-semibold text-slate-800 truncate">正在讀取試算表資訊...</p>
-            <p id="backendSheetMetaText" class="text-[11px] text-slate-600">分頁：會議資料（全行事曆事項）、異動紀錄（增刪修歷程）</p>
+            <p id="backendSheetMetaText" class="text-[11px] text-slate-600">分頁：會議資料、異動紀錄、管理者名單、系統設定</p>
           </div>
           <div class="flex items-center gap-1.5 shrink-0">
             <a id="setupSheetOpenBtn" href="#" onclick="return handleOpenSheetClick(event)" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer">
@@ -779,7 +779,7 @@
           </div>
         </div>
         <p class="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/70 pt-2">
-          ※ 行事曆的新增、修改與刪除皆即時寫入此試算表。若需改用學校既有 Google 試算表，請至 Google Apps Script「專案設定」→「指令碼屬性」設定 <code class="bg-white/80 px-1 py-0.5 rounded border border-emerald-200 font-mono">SPREADSHEET_ID</code>。
+          ※ 行事曆資料寫入「會議資料」與「異動紀錄」；管理密碼與 API Key 同步存於「管理者名單」與「系統設定」。若需改用學校既有試算表，請於 Apps Script 指令碼屬性設定 <code class="bg-white/80 px-1 py-0.5 rounded border border-emerald-200 font-mono">SPREADSHEET_ID</code>。
         </p>
       </div>
 
@@ -814,6 +814,114 @@
         </div>
       </div>
 
+      <!-- 管理者帳密與 Gemini API Key 設定區（比照 AI 智慧社團選社系統寫入試算表） -->
+      <div id="adminConfigSection" class="space-y-3 bg-indigo-50/60 p-4 rounded-xl border border-indigo-200">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h4 class="text-xs font-bold text-indigo-950 flex items-center gap-1.5">
+            <i class="fa-solid fa-shield-halved text-brand-600"></i>
+            <span>管理者設定（密碼與 Gemini API Key · 同步寫入試算表）</span>
+          </h4>
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span id="adminConfigKeyBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">檢查金鑰中...</span>
+            <span id="adminConfigPwdBadge" class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200">檢查密碼狀態...</span>
+          </div>
+        </div>
+
+        <!-- 狀態 1：未登入（輸入管理者名單密碼） -->
+        <div id="adminLoginBox" class="space-y-2.5">
+          <div class="flex flex-col sm:flex-row gap-2">
+            <input type="password" id="adminLoginPwdInput" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); doCalendarAdminLogin();}" placeholder="輸入管理者密碼（首次預設 admin888）" class="flex-1 px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+            <button type="button" id="btnAdminLogin" onclick="doCalendarAdminLogin()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-60">
+              登入管理者設定
+            </button>
+          </div>
+          <div id="adminLoginFeedback" class="hidden p-2.5 rounded-xl text-xs border"></div>
+          <p class="text-[11px] text-slate-600 leading-relaxed">
+            💡 管理者帳號（<code class="bg-white px-1 rounded border border-indigo-200 font-mono">admin</code>）與密碼、以及 <code class="bg-white px-1 rounded border border-indigo-200 font-mono">GEMINI_API_KEY</code> 皆儲存於 Google 試算表「<strong>管理者名單</strong>」與「<strong>系統設定</strong>」分頁；若忘記密碼可開啟試算表直接查看或修改。
+          </p>
+        </div>
+
+        <!-- 狀態 2：使用預設 admin888 登入，要求先變更為專屬密碼 -->
+        <div id="adminForcePwdBox" class="hidden space-y-2.5 bg-amber-50/90 border border-amber-200 rounded-xl p-3">
+          <div class="flex items-center justify-between gap-2">
+            <p class="text-xs font-bold text-amber-900">
+              <i class="fa-solid fa-triangle-exclamation text-amber-600 mr-1"></i> 安全提升：請先修改預設密碼（admin888）
+            </p>
+            <button type="button" onclick="logoutCalendarAdmin()" class="text-[11px] font-semibold text-slate-500 hover:text-slate-800 cursor-pointer">登出</button>
+          </div>
+          <p class="text-[11px] text-amber-800 leading-relaxed">
+            為避免任何人以預設密碼覆寫 AI 金鑰或管理會議，請先設定 8 碼以上專屬密碼，系統將同步寫入試算表「管理者名單」與「系統設定」。
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <input type="password" id="calForceOldPwd" placeholder="目前密碼 (admin888)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+            <input type="password" id="calForceNewPwd1" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+            <input type="password" id="calForceNewPwd2" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(true);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+          </div>
+          <div id="adminForcePwdFeedback" class="hidden p-2 rounded-lg text-xs border"></div>
+          <div class="flex justify-end">
+            <button type="button" id="btnAdminForcePwd" onclick="submitCalendarPasswordChange(true)" class="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition cursor-pointer disabled:opacity-60">
+              儲存新密碼並解鎖設定
+            </button>
+          </div>
+        </div>
+
+        <!-- 狀態 3：已通過自訂密碼登入，管理 API Key 與改密 -->
+        <div id="adminSettingsPanel" class="hidden space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2 bg-white border border-indigo-200 rounded-xl px-3 py-2">
+            <span class="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
+              <i class="fa-solid fa-circle-check text-emerald-600"></i> 已驗證管理者身分（修改即時寫入試算表）
+            </span>
+            <button type="button" onclick="logoutCalendarAdmin()" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold cursor-pointer">
+              登出管理
+            </button>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-xl p-3 space-y-2.5">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <div class="sm:col-span-2">
+                <label for="adminGeminiKeyInput" class="block text-[11px] font-bold text-slate-700 mb-1">Gemini API Key（唯寫保護，同步存於試算表「系統設定」）</label>
+                <input type="password" id="adminGeminiKeyInput" placeholder="貼上 AIza... 金鑰（留空＝保留試算表現有設定）" class="w-full px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white font-mono">
+              </div>
+              <div>
+                <label for="adminGeminiModelSelect" class="block text-[11px] font-bold text-slate-700 mb-1">Gemini 優先模型</label>
+                <select id="adminGeminiModelSelect" class="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white">
+                  <option value="gemini-2.5-flash">gemini-2.5-flash（預設穩定）</option>
+                  <option value="gemini-2.0-flash">gemini-2.0-flash（備援快速）</option>
+                </select>
+              </div>
+            </div>
+            <div id="adminSettingsFeedback" class="hidden p-2 rounded-lg text-xs border"></div>
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <button type="button" id="btnClearGeminiKey" onclick="saveCalendarAdminSettings(true)" class="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-[11px] font-semibold cursor-pointer disabled:opacity-60">
+                清除試算表 API Key
+              </button>
+              <button type="button" id="btnSaveAdminSettings" onclick="saveCalendarAdminSettings(false)" class="px-3.5 py-1.5 bg-brand-600 hover:bg-brand-700 text-white rounded-lg text-xs font-bold transition shadow-sm cursor-pointer disabled:opacity-60">
+                儲存 API Key 與模型至試算表
+              </button>
+            </div>
+          </div>
+
+          <details class="bg-white border border-slate-200 rounded-xl p-3">
+            <summary class="text-xs font-bold text-slate-700 cursor-pointer select-none">
+              <i class="fa-solid fa-key text-slate-500 mr-1"></i> 修改管理者密碼（同步寫入「管理者名單」與「系統設定」）
+            </summary>
+            <div class="mt-2.5 space-y-2">
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input type="password" id="calChangeOldPwd" placeholder="目前舊密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                <input type="password" id="calChangeNewPwd1" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                <input type="password" id="calChangeNewPwd2" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(false);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+              </div>
+              <div id="adminChangePwdFeedback" class="hidden p-2 rounded-lg text-xs border"></div>
+              <div class="flex justify-end">
+                <button type="button" id="btnChangeAdminPwd" onclick="submitCalendarPasswordChange(false)" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold cursor-pointer disabled:opacity-60">
+                  更新管理密碼
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </div>
+
       <!-- 自主部署與校際擴散指引 -->
       <div class="text-xs text-slate-600 space-y-2.5 leading-relaxed">
         <h4 class="font-bold text-slate-800 text-sm flex items-center gap-1.5">
@@ -825,8 +933,8 @@
             <p>開啟 Google Sheets ➔「擴充功能」➔「Apps Script」，完整貼入本專案 <code>gas_code.gs</code>。</p>
           </div>
           <div class="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
-            <span class="font-bold text-slate-800 block">步驟 2：於伺服端設定 Gemini API Key (資安隔離)</span>
-            <p>至 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" class="text-brand-600 underline font-semibold">Google AI Studio</a> 申請金鑰，並在 Apps Script「專案設定」➔「指令碼屬性」新增 <code>GEMINI_API_KEY</code>。</p>
+            <span class="font-bold text-slate-800 block">步驟 2：設定管理者密碼與 Gemini API Key（存於試算表）</span>
+            <p>至 <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer" class="text-brand-600 underline font-semibold">Google AI Studio</a> 申請金鑰後，可透過上方「<strong>管理者設定</strong>」（預設密碼 <code>admin888</code>），或直接於試算表「<strong>管理者名單</strong>」／「<strong>系統設定</strong>」分頁填寫與修改。</p>
           </div>
           <div class="p-3 bg-white border border-slate-200 rounded-xl space-y-1">
             <span class="font-bold text-slate-800 block">步驟 3：發布為網頁應用程式</span>
@@ -856,7 +964,7 @@
       <div class="space-y-1.5">
         <label for="deleteInputPassword" class="block text-xs font-bold text-slate-700">管理密碼驗證</label>
         <input type="password" id="deleteInputPassword" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); executeDeleteEvent();}" placeholder="若建立時無設定密碼可留空" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono">
-        <p class="text-[11px] text-slate-400">※ 刪除後資料將自雲端行事曆與試算表永久移除。</p>
+        <p class="text-[11px] text-slate-400">※ 可輸入建立時之會議密碼，或已自訂之試算表「管理者名單」管理密碼。刪除後將永久移除。</p>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
         <button type="button" onclick="closeModal('deleteConfirmModal')" class="px-3.5 py-1.5 text-slate-600 hover:bg-slate-100 rounded-xl text-xs font-semibold cursor-pointer">取消</button>
@@ -1007,7 +1115,12 @@
       name: '',
       sheetName: '會議資料',
       auditSheetName: '異動紀錄',
+      adminSheetName: '管理者名單',
+      configSheetName: '系統設定',
       eventCount: 0,
+      hasGeminiApiKey: null,
+      geminiModel: 'gemini-2.5-flash',
+      isDefaultAdminPassword: null,
       loading: false,
       loadedForGasUrl: ''
     };
@@ -1021,12 +1134,20 @@
       if (json.spreadsheetName) backendSheetInfo.name = String(json.spreadsheetName);
       if (json.sheetName) backendSheetInfo.sheetName = String(json.sheetName);
       if (json.auditSheetName) backendSheetInfo.auditSheetName = String(json.auditSheetName);
+      if (json.adminSheetName) backendSheetInfo.adminSheetName = String(json.adminSheetName);
+      if (json.configSheetName) backendSheetInfo.configSheetName = String(json.configSheetName);
+      if (typeof json.hasGeminiApiKey === 'boolean') backendSheetInfo.hasGeminiApiKey = json.hasGeminiApiKey;
+      if (json.geminiModel) backendSheetInfo.geminiModel = String(json.geminiModel);
+      if (typeof json.isDefaultAdminPassword === 'boolean') {
+        backendSheetInfo.isDefaultAdminPassword = json.isDefaultAdminPassword;
+      }
       if (typeof json.eventCount === 'number' || (json.eventCount !== undefined && json.eventCount !== null)) {
         backendSheetInfo.eventCount = Number(json.eventCount) || 0;
       }
       backendSheetInfo.loadedForGasUrl = gasUrl;
       backendSheetInfo.loading = false;
       syncBackendSheetUi();
+      if (typeof syncAdminConfigUi === 'function') syncAdminConfigUi();
     }
 
     function syncBackendSheetUi() {
@@ -1062,7 +1183,7 @@
         }
       }
       if (metaEl) {
-        metaEl.innerText = `分頁：${backendSheetInfo.sheetName}（目前 ${count} 筆）、${backendSheetInfo.auditSheetName}（增刪修歷程）`;
+        metaEl.innerText = `分頁：${backendSheetInfo.sheetName}（目前 ${count} 筆）、${backendSheetInfo.auditSheetName}、${backendSheetInfo.adminSheetName}、${backendSheetInfo.configSheetName}`;
       }
     }
 
@@ -2146,7 +2267,12 @@
         const res = await safeFetch(getActiveGasUrl(), {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'deleteEvent', id: activeEvent.id, password: pwd })
+          body: JSON.stringify({
+            action: 'deleteEvent',
+            id: activeEvent.id,
+            password: pwd,
+            adminToken: (adminSession && adminSession.token) ? adminSession.token : undefined
+          })
         }, 20000);
         const json = await res.json();
 
@@ -2200,6 +2326,7 @@
         category: document.getElementById('formCategory').value,
         description: document.getElementById('formDescription').value.trim(),
         password: document.getElementById('formPassword').value.trim(),
+        adminToken: (isEditing && adminSession && adminSession.token) ? adminSession.token : undefined
       };
 
       if (payload.startTime >= payload.endTime) {
@@ -2533,17 +2660,98 @@
     // ========================================================
     // ★★★ 系統與雲端連線設定 Modal 互動邏輯 ★★★
     // ========================================================
+    let adminSession = { token: '', isDefault: false };
+
+    function showAdminFeedback_(boxId, type, msg) {
+      const box = document.getElementById(boxId);
+      if (!box) return;
+      if (!msg) {
+        box.className = 'hidden p-2 rounded-lg text-xs border';
+        box.innerText = '';
+        return;
+      }
+      if (type === 'success') {
+        box.className = 'p-2.5 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 font-medium block';
+      } else if (type === 'info') {
+        box.className = 'p-2.5 rounded-xl text-xs border bg-blue-50 text-blue-800 border-blue-200 font-medium block';
+      } else {
+        box.className = 'p-2.5 rounded-xl text-xs border bg-rose-50 text-rose-800 border-rose-200 font-medium block';
+      }
+      box.innerText = msg;
+    }
+
+    function syncAdminConfigUi() {
+      const keyBadge = document.getElementById('adminConfigKeyBadge');
+      const pwdBadge = document.getElementById('adminConfigPwdBadge');
+      const loginBox = document.getElementById('adminLoginBox');
+      const forceBox = document.getElementById('adminForcePwdBox');
+      const panelBox = document.getElementById('adminSettingsPanel');
+      const modelSelect = document.getElementById('adminGeminiModelSelect');
+
+      if (keyBadge) {
+        if (backendSheetInfo.hasGeminiApiKey === true) {
+          keyBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
+          keyBadge.innerText = `AI 金鑰就緒 (${backendSheetInfo.geminiModel || 'gemini-2.5-flash'})`;
+        } else if (backendSheetInfo.hasGeminiApiKey === false) {
+          keyBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200';
+          keyBadge.innerText = '尚未設定 API Key';
+        } else {
+          keyBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200';
+          keyBadge.innerText = '檢查金鑰中...';
+        }
+      }
+
+      if (pwdBadge) {
+        const isDef = adminSession.token ? adminSession.isDefault : backendSheetInfo.isDefaultAdminPassword;
+        if (isDef === true) {
+          pwdBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-100 text-amber-800 border border-amber-200';
+          pwdBadge.innerText = '預設密碼 admin888（建議變更）';
+        } else if (isDef === false) {
+          pwdBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
+          pwdBadge.innerText = '已自訂安全密碼';
+        } else {
+          pwdBadge.className = 'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-600 border border-slate-200';
+          pwdBadge.innerText = '檢查密碼狀態...';
+        }
+      }
+
+      const loggedIn = Boolean(adminSession.token);
+      if (loginBox) loginBox.classList.toggle('hidden', loggedIn);
+      if (forceBox) forceBox.classList.toggle('hidden', !(loggedIn && adminSession.isDefault));
+      if (panelBox) panelBox.classList.toggle('hidden', !(loggedIn && !adminSession.isDefault));
+
+      if (modelSelect && backendSheetInfo.geminiModel) {
+        modelSelect.value = backendSheetInfo.geminiModel;
+      }
+    }
+
     function openSetupModal() {
       const input = document.getElementById('settingGasUrl');
       const current = localStorage.getItem(STORAGE_KEY_GAS_URL);
       input.value = (current && current !== 'DEMO_MODE') ? current : DEFAULT_GAS_URL;
       document.getElementById('pingResultBox').classList.add('hidden');
+      showAdminFeedback_('adminLoginFeedback', '', '');
+      showAdminFeedback_('adminForcePwdFeedback', '', '');
+      showAdminFeedback_('adminSettingsFeedback', '', '');
+      showAdminFeedback_('adminChangePwdFeedback', '', '');
       syncBackendSheetUi();
+      syncAdminConfigUi();
       const activeUrl = getActiveGasUrl();
       if (!backendSheetInfo.url || backendSheetInfo.loadedForGasUrl !== activeUrl) {
         fetchBackendSheetMeta(activeUrl);
       }
       openModal('setupModal');
+    }
+
+    function resetBackendMetaState_() {
+      backendSheetInfo.url = '';
+      backendSheetInfo.name = '';
+      backendSheetInfo.hasGeminiApiKey = null;
+      backendSheetInfo.isDefaultAdminPassword = null;
+      backendSheetInfo.loadedForGasUrl = '';
+      adminSession = { token: '', isDefault: false };
+      syncBackendSheetUi();
+      syncAdminConfigUi();
     }
 
     function saveGasSettings() {
@@ -2558,10 +2766,7 @@
         showToast('已成功儲存並套用自訂雲端連線網址！', 'success');
       }
 
-      backendSheetInfo.url = '';
-      backendSheetInfo.name = '';
-      backendSheetInfo.loadedForGasUrl = '';
-      syncBackendSheetUi();
+      resetBackendMetaState_();
       closeModal('setupModal');
       fetchLiveEvents();
     }
@@ -2569,14 +2774,189 @@
     function restoreDefaultGasUrl() {
       localStorage.removeItem(STORAGE_KEY_GAS_URL);
       document.getElementById('settingGasUrl').value = DEFAULT_GAS_URL;
-      backendSheetInfo.url = '';
-      backendSheetInfo.name = '';
-      backendSheetInfo.loadedForGasUrl = '';
-      syncBackendSheetUi();
+      resetBackendMetaState_();
       const pingBox = document.getElementById('pingResultBox');
       pingBox.className = 'p-3 rounded-xl text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 block';
       pingBox.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> 已還原為官方預設後端網址並重新同步';
       fetchLiveEvents();
+    }
+
+    async function doCalendarAdminLogin() {
+      const pwdEl = document.getElementById('adminLoginPwdInput');
+      const btn = document.getElementById('btnAdminLogin');
+      const pwd = pwdEl ? pwdEl.value.trim() : '';
+      showAdminFeedback_('adminLoginFeedback', '', '');
+      if (!pwd) {
+        showAdminFeedback_('adminLoginFeedback', 'error', '請輸入管理者密碼（首次預設為 admin888）。');
+        return;
+      }
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerText = '驗證中...';
+      }
+      try {
+        const res = await safeFetch(getActiveGasUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'loginAdmin', password: pwd })
+        }, 15000);
+        const json = await res.json();
+
+        if (json.status === 'success' && json.token) {
+          adminSession = { token: json.token, isDefault: Boolean(json.isDefault) };
+          if (pwdEl) pwdEl.value = '';
+          if (typeof json.hasGeminiApiKey === 'boolean') backendSheetInfo.hasGeminiApiKey = json.hasGeminiApiKey;
+          if (json.geminiModel) backendSheetInfo.geminiModel = String(json.geminiModel);
+          backendSheetInfo.isDefaultAdminPassword = Boolean(json.isDefault);
+          if (adminSession.isDefault) {
+            const forceOld = document.getElementById('calForceOldPwd');
+            if (forceOld) forceOld.value = pwd;
+            showToast('登入成功！首次請先修改預設密碼 admin888。', 'warning');
+          } else {
+            showToast('管理者登入成功！可管理 Gemini API Key 與密碼設定。', 'success');
+          }
+          syncAdminConfigUi();
+        } else {
+          showAdminFeedback_('adminLoginFeedback', 'error', json.message || '管理者密碼不正確。');
+        }
+      } catch (err) {
+        showAdminFeedback_('adminLoginFeedback', 'error', '連線失敗：' + (err.message || err.toString()));
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerText = '登入管理者設定';
+        }
+      }
+    }
+
+    async function submitCalendarPasswordChange(isForceMode) {
+      const oldEl = document.getElementById(isForceMode ? 'calForceOldPwd' : 'calChangeOldPwd');
+      const new1El = document.getElementById(isForceMode ? 'calForceNewPwd1' : 'calChangeNewPwd1');
+      const new2El = document.getElementById(isForceMode ? 'calForceNewPwd2' : 'calChangeNewPwd2');
+      const feedbackId = isForceMode ? 'adminForcePwdFeedback' : 'adminChangePwdFeedback';
+      const btn = document.getElementById(isForceMode ? 'btnAdminForcePwd' : 'btnChangeAdminPwd');
+
+      const oldPwd = oldEl ? oldEl.value.trim() : '';
+      const n1 = new1El ? new1El.value.trim() : '';
+      const n2 = new2El ? new2El.value.trim() : '';
+      showAdminFeedback_(feedbackId, '', '');
+
+      if (!oldPwd) {
+        showAdminFeedback_(feedbackId, 'error', '請輸入目前舊密碼。');
+        return;
+      }
+      if (n1.length < 8 || n1 === 'admin888') {
+        showAdminFeedback_(feedbackId, 'error', '新密碼長度須至少 8 碼，且不可使用預設密碼 admin888！');
+        return;
+      }
+      if (n1 !== n2) {
+        showAdminFeedback_(feedbackId, 'error', '兩次輸入的新密碼不一致！');
+        return;
+      }
+
+      if (btn) btn.disabled = true;
+      try {
+        const res = await safeFetch(getActiveGasUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'changeAdminPassword',
+            token: adminSession.token,
+            oldPassword: oldPwd,
+            newPassword: n1
+          })
+        }, 20000);
+        const json = await res.json();
+        if (json.status === 'success') {
+          adminSession.isDefault = false;
+          backendSheetInfo.isDefaultAdminPassword = false;
+          if (oldEl) oldEl.value = '';
+          if (new1El) new1El.value = '';
+          if (new2El) new2El.value = '';
+          syncAdminConfigUi();
+          showToast(json.message || '管理密碼已更新並寫入試算表！', 'success');
+          if (!isForceMode) {
+            showAdminFeedback_(feedbackId, 'success', json.message || '管理密碼已更新並同步寫入試算表！');
+          }
+        } else {
+          if ((json.message || '').includes('403')) {
+            logoutCalendarAdmin();
+            showAdminFeedback_('adminLoginFeedback', 'error', json.message);
+          } else {
+            showAdminFeedback_(feedbackId, 'error', json.message || '修改密碼失敗。');
+          }
+        }
+      } catch (err) {
+        showAdminFeedback_(feedbackId, 'error', '連線失敗：' + (err.message || err.toString()));
+      } finally {
+        if (btn) btn.disabled = false;
+      }
+    }
+
+    async function saveCalendarAdminSettings(clearKey) {
+      const keyEl = document.getElementById('adminGeminiKeyInput');
+      const modelEl = document.getElementById('adminGeminiModelSelect');
+      const saveBtn = document.getElementById('btnSaveAdminSettings');
+      const clearBtn = document.getElementById('btnClearGeminiKey');
+      showAdminFeedback_('adminSettingsFeedback', '', '');
+
+      const keyVal = (!clearKey && keyEl) ? keyEl.value.trim() : '';
+      const modelVal = modelEl ? modelEl.value : 'gemini-2.5-flash';
+
+      if (saveBtn) saveBtn.disabled = true;
+      if (clearBtn) clearBtn.disabled = true;
+      try {
+        const res = await safeFetch(getActiveGasUrl(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'saveAdminSettings',
+            token: adminSession.token,
+            settings: {
+              clearGeminiApiKey: Boolean(clearKey),
+              geminiApiKey: keyVal,
+              geminiModel: modelVal
+            }
+          })
+        }, 20000);
+        const json = await res.json();
+        if (json.status === 'success') {
+          if (keyEl) keyEl.value = '';
+          if (typeof json.hasGeminiApiKey === 'boolean') backendSheetInfo.hasGeminiApiKey = json.hasGeminiApiKey;
+          if (json.geminiModel) backendSheetInfo.geminiModel = String(json.geminiModel);
+          syncAdminConfigUi();
+          showAdminFeedback_('adminSettingsFeedback', 'success', json.message || '設定已寫入試算表！');
+          showToast(json.message || '設定已儲存並寫入 Google 試算表！', 'success');
+        } else if ((json.message || '').includes('403')) {
+          logoutCalendarAdmin();
+          showAdminFeedback_('adminLoginFeedback', 'error', json.message);
+        } else {
+          showAdminFeedback_('adminSettingsFeedback', 'error', json.message || '儲存設定失敗。');
+        }
+      } catch (err) {
+        showAdminFeedback_('adminSettingsFeedback', 'error', '連線失敗：' + (err.message || err.toString()));
+      } finally {
+        if (saveBtn) saveBtn.disabled = false;
+        if (clearBtn) clearBtn.disabled = false;
+      }
+    }
+
+    function logoutCalendarAdmin() {
+      adminSession = { token: '', isDefault: false };
+      [
+        'adminLoginPwdInput', 'adminGeminiKeyInput',
+        'calForceOldPwd', 'calForceNewPwd1', 'calForceNewPwd2',
+        'calChangeOldPwd', 'calChangeNewPwd1', 'calChangeNewPwd2'
+      ].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
+      showAdminFeedback_('adminLoginFeedback', '', '');
+      showAdminFeedback_('adminForcePwdFeedback', '', '');
+      showAdminFeedback_('adminSettingsFeedback', '', '');
+      showAdminFeedback_('adminChangePwdFeedback', '', '');
+      syncAdminConfigUi();
     }
 
     async function testConnectionPing() {
