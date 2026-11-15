@@ -388,8 +388,8 @@
             <i class="fa-solid fa-wand-magic-sparkles text-amber-200"></i>
           </div>
           <div>
-            <h3 id="aiExtractTitle" class="font-bold text-base leading-tight">AI 公文與通知文字「一鍵速填」</h3>
-            <p class="text-xs text-ai-100">貼入公文本文、LINE 處室通知或 Email，Gemini 自動擷取會議時間、地點與主辦單位</p>
+            <h3 id="aiExtractTitle" class="font-bold text-base leading-tight">AI 公文與通知「一鍵速填」</h3>
+            <p class="text-xs text-ai-100">貼入公文本文、LINE 通知文字，或直接貼上／上傳開會通知截圖，Gemini 自動辨識擷取</p>
           </div>
         </div>
         <button type="button" onclick="closeModal('aiExtractModal')" class="text-ai-100 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition cursor-pointer" aria-label="關閉視窗">
@@ -402,18 +402,63 @@
         <!-- 資安微提醒 -->
         <div class="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-medium">
           <i class="fa-solid fa-shield-halved text-emerald-600 shrink-0"></i>
-          <span>資安提醒：僅限貼入公開校務會議通知，請勿包含師生身分證字號、手機號碼或個人醫療病歷。</span>
+          <span>資安提醒：僅限貼入公開校務會議通知或截圖，請勿包含師生身分證字號、手機號碼或個人醫療病歷。</span>
         </div>
 
         <!-- 輸入文字框 -->
         <div>
           <div class="flex items-center justify-between mb-1.5">
-            <label for="aiRawInput" class="block text-sm font-bold text-slate-800">貼上原始公文或會議通知內容：</label>
+            <label for="aiRawInput" class="block text-sm font-bold text-slate-800">貼上原始公文或會議通知文字<span class="text-xs font-normal text-slate-400 ml-1">（可只傳截圖，或搭配補充文字）</span>：</label>
             <button type="button" onclick="clearAiExtractInput()" class="text-xs text-slate-400 hover:text-slate-700 font-semibold cursor-pointer">
-              清空文字
+              清空內容
             </button>
           </div>
-          <textarea id="aiRawInput" rows="5" placeholder="例：&#10;主旨：召開本校 115 學年度第 1 學期課程發展委員會第 2 次會議。&#10;一、時間：115 年 11 月 25 日（星期三）下午 1 時 30 分至 3 時 0 分。&#10;二、地點：行政大樓 3F 教師研習中心。&#10;三、主辦單位：教務處。" class="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-ai-500 focus:bg-white transition leading-relaxed"></textarea>
+          <textarea id="aiRawInput" rows="4" placeholder="例：&#10;主旨：召開本校 115 學年度第 1 學期課程發展委員會第 2 次會議。&#10;一、時間：115 年 11 月 25 日（星期三）下午 1 時 30 分至 3 時 0 分。&#10;二、地點：行政大樓 3F 教師研習中心。&#10;三、主辦單位：教務處。&#10;（提示：也可直接按 Ctrl+V 貼上 LINE 通知或公文截圖！）" class="w-full p-3.5 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-ai-500 focus:bg-white transition leading-relaxed"></textarea>
+        </div>
+
+        <!-- 開會通知 / 公文截圖貼上與上傳區 -->
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+            <span class="text-sm font-bold text-slate-800 flex flex-wrap items-center gap-1.5">
+              <i class="fa-regular fa-image text-ai-600"></i>
+              <span>開會通知 / 公文截圖辨識</span>
+              <span class="text-[11px] font-normal text-slate-400 whitespace-nowrap">（支援純截圖分析）</span>
+            </span>
+            <span class="hidden sm:inline-flex items-center text-[11px] font-semibold text-ai-700 bg-ai-50 px-2 py-0.5 rounded-full border border-ai-200 whitespace-nowrap shrink-0">支援 Ctrl+V 貼圖</span>
+          </div>
+
+          <input type="file" id="aiImageInput" accept="image/*" class="hidden" onchange="handleAiImageFileSelect(event)">
+
+          <div id="aiImageDropzone" role="button" tabindex="0" onclick="document.getElementById('aiImageInput').click()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();document.getElementById('aiImageInput').click();}" class="rounded-xl border-2 border-dashed border-ai-200 hover:border-ai-400 bg-ai-50/40 hover:bg-ai-50/70 transition p-3.5 cursor-pointer focus:outline-none focus:ring-2 focus:ring-ai-500">
+            <div id="aiImageEmptyState" class="flex flex-col sm:flex-row items-center justify-center gap-3 text-center sm:text-left py-1">
+              <div class="w-10 h-10 rounded-xl bg-white border border-ai-200 text-ai-600 flex items-center justify-center shadow-xs shrink-0">
+                <i class="fa-solid fa-camera-retro text-base"></i>
+              </div>
+              <div class="text-xs leading-relaxed">
+                <p class="font-bold text-slate-700">點擊選擇截圖、拖曳圖片至此，或直接按 <kbd class="px-1.5 py-0.5 bg-white border border-slate-300 rounded text-[11px] font-mono text-slate-700">Ctrl+V</kbd> 貼上</p>
+                <p class="text-[11px] text-slate-500">支援 LINE 開會通知截圖、公文拍照或 PDF 畫面截圖（自動壓縮傳送）</p>
+              </div>
+            </div>
+
+            <div id="aiImagePreviewBox" class="hidden flex flex-col sm:flex-row items-center gap-3" onclick="event.stopPropagation()">
+              <img id="aiImagePreviewImg" alt="已附加之開會通知截圖預覽" class="w-full sm:w-32 h-24 object-contain rounded-lg border border-slate-200 bg-white p-1 shrink-0" />
+              <div class="flex-1 min-w-0 w-full text-xs space-y-1.5">
+                <div class="flex items-center gap-1.5 text-emerald-700 font-bold">
+                  <i class="fa-solid fa-circle-check shrink-0"></i>
+                  <span>截圖已就緒，可點擊下方進行 AI 圖文辨識</span>
+                </div>
+                <p id="aiImageMeta" class="text-[11px] text-slate-500 truncate">--</p>
+                <div class="flex items-center gap-2 pt-0.5">
+                  <button type="button" onclick="document.getElementById('aiImageInput').click()" class="px-2.5 py-1 rounded-lg bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold text-[11px] transition cursor-pointer">
+                    更換截圖
+                  </button>
+                  <button type="button" onclick="clearAiImage()" class="px-2.5 py-1 rounded-lg bg-rose-50 border border-rose-200 hover:bg-rose-100 text-rose-700 font-semibold text-[11px] transition cursor-pointer">
+                    移除截圖
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- 執行按鈕 -->
@@ -1180,6 +1225,7 @@
       buildDynamicCategoryLegend();
       syncCategoryPreview();
       setupLiveConflictListeners();
+      setupAiExtractImageListeners();
       // 立即繪製當前月份骨架，避免載入時閃爍空白
       renderCalendar();
       fetchLiveEvents();
@@ -2930,38 +2976,212 @@
     }
 
     // ========================================================
-    // ★★★ AI 公文速填互動邏輯 ★★★
+    // ★★★ AI 公文 / 截圖速填互動邏輯 ★★★
     // ========================================================
     let parsedAiResult = null;
+    let aiAttachedImage = null;
 
     function openAiExtractModal() {
       openModal('aiExtractModal');
+      setTimeout(() => document.getElementById('aiRawInput')?.focus(), 50);
+    }
+
+    function setAiAttachedImage(imgObj) {
+      aiAttachedImage = imgObj;
+      const previewImg = document.getElementById('aiImagePreviewImg');
+      const metaEl = document.getElementById('aiImageMeta');
+      const previewBox = document.getElementById('aiImagePreviewBox');
+      const emptyBox = document.getElementById('aiImageEmptyState');
+      if (imgObj && imgObj.dataUrl) {
+        if (previewImg) previewImg.src = imgObj.dataUrl;
+        if (metaEl) {
+          const dims = imgObj.width && imgObj.height ? `${imgObj.width}×${imgObj.height} · ` : '';
+          metaEl.innerText = `${imgObj.fileName || '會議通知截圖'}（${dims}約 ${imgObj.kb || '?'} KB）`;
+        }
+        previewBox?.classList.remove('hidden');
+        emptyBox?.classList.add('hidden');
+      } else {
+        clearAiImage();
+      }
+    }
+
+    function clearAiImage() {
+      aiAttachedImage = null;
+      const fileInput = document.getElementById('aiImageInput');
+      if (fileInput) fileInput.value = '';
+      const previewImg = document.getElementById('aiImagePreviewImg');
+      if (previewImg) previewImg.removeAttribute('src');
+      const metaEl = document.getElementById('aiImageMeta');
+      if (metaEl) metaEl.innerText = '--';
+      document.getElementById('aiImagePreviewBox')?.classList.add('hidden');
+      document.getElementById('aiImageEmptyState')?.classList.remove('hidden');
     }
 
     function clearAiExtractInput() {
       document.getElementById('aiRawInput').value = '';
+      clearAiImage();
       document.getElementById('aiResultCard').classList.add('hidden');
       parsedAiResult = null;
       document.getElementById('aiRawInput').focus();
     }
 
+    function setupAiExtractImageListeners() {
+      // 彈窗開啟時，在視窗內任何位置按下 Ctrl+V 皆可自動接收圖片截圖
+      document.addEventListener('paste', (e) => {
+        const modal = document.getElementById('aiExtractModal');
+        if (!modal || modal.classList.contains('hidden')) return;
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (const item of items) {
+          if (item.type && item.type.startsWith('image/')) {
+            const file = item.getAsFile();
+            if (file) {
+              e.preventDefault();
+              processAiImageFile(file, '剪貼簿截圖.png');
+              return;
+            }
+          }
+        }
+      });
+
+      const dropzone = document.getElementById('aiImageDropzone');
+      if (dropzone) {
+        ['dragenter', 'dragover'].forEach(evName => {
+          dropzone.addEventListener(evName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.add('border-ai-500', 'bg-ai-100/70');
+          });
+        });
+        ['dragleave', 'drop'].forEach(evName => {
+          dropzone.addEventListener(evName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dropzone.classList.remove('border-ai-500', 'bg-ai-100/70');
+          });
+        });
+        dropzone.addEventListener('drop', (e) => {
+          const file = e.dataTransfer?.files?.[0];
+          if (file) processAiImageFile(file);
+        });
+      }
+    }
+
+    function handleAiImageFileSelect(event) {
+      const file = event?.target?.files?.[0];
+      if (file) processAiImageFile(file);
+    }
+
+    function compressAiImageDataUrl(rawDataUrl, origMimeType) {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const origW = img.naturalWidth || img.width || 0;
+          const origH = img.naturalHeight || img.height || 0;
+          const maxDim = 1600;
+          const keepOriginalMime = ['image/png', 'image/jpeg', 'image/webp'].includes(origMimeType);
+          if (keepOriginalMime && Math.max(origW, origH) <= maxDim && rawDataUrl.length <= 650000) {
+            const commaIdx = rawDataUrl.indexOf(',');
+            const base64 = commaIdx >= 0 ? rawDataUrl.slice(commaIdx + 1) : '';
+            return resolve({ dataUrl: rawDataUrl, mimeType: origMimeType, base64, width: origW, height: origH });
+          }
+
+          let targetW = origW;
+          let targetH = origH;
+          if (Math.max(origW, origH) > maxDim && origW > 0 && origH > 0) {
+            const ratio = maxDim / Math.max(origW, origH);
+            targetW = Math.max(1, Math.round(origW * ratio));
+            targetH = Math.max(1, Math.round(origH * ratio));
+          }
+
+          const renderCanvas = (w, h, quality) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx2d = canvas.getContext('2d');
+            if (!ctx2d) throw new Error('無法初始化圖片壓縮畫布');
+            ctx2d.fillStyle = '#ffffff';
+            ctx2d.fillRect(0, 0, w, h);
+            ctx2d.drawImage(img, 0, 0, w, h);
+            return canvas.toDataURL('image/jpeg', quality);
+          };
+
+          try {
+            let outUrl = renderCanvas(targetW, targetH, 0.88);
+            if (outUrl.length > 2000000 && Math.max(targetW, targetH) > 1280) {
+              const ratio2 = 1280 / Math.max(targetW, targetH);
+              targetW = Math.max(1, Math.round(targetW * ratio2));
+              targetH = Math.max(1, Math.round(targetH * ratio2));
+              outUrl = renderCanvas(targetW, targetH, 0.8);
+            }
+            const commaIdx = outUrl.indexOf(',');
+            const base64 = commaIdx >= 0 ? outUrl.slice(commaIdx + 1) : '';
+            resolve({ dataUrl: outUrl, mimeType: 'image/jpeg', base64, width: targetW, height: targetH });
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.onerror = () => reject(new Error('無法讀取圖片內容，請確認檔案是否為有效圖片'));
+        img.src = rawDataUrl;
+      });
+    }
+
+    function processAiImageFile(file, fallbackName) {
+      const mimeType = String(file.type || '').toLowerCase();
+      if (!mimeType.startsWith('image/')) {
+        showToast('請選擇圖片檔案（PNG、JPG、WEBP 或 GIF）', 'warning');
+        return;
+      }
+      if (file.size > 20 * 1024 * 1024) {
+        showToast('圖片檔案過大（超過 20MB），請先裁切截圖後再試。', 'warning');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        try {
+          const rawDataUrl = String(ev?.target?.result || '');
+          const processed = await compressAiImageDataUrl(rawDataUrl, mimeType);
+          const kb = Math.max(1, Math.round((processed.base64.length * 3) / 4 / 1024));
+          setAiAttachedImage({
+            ...processed,
+            kb,
+            fileName: file.name || fallbackName || '會議通知截圖'
+          });
+          showToast('已載入開會通知截圖，請點擊「呼叫 Gemini AI 智慧分析」辨識！', 'success');
+        } catch (err) {
+          showToast('圖片處理失敗：' + (err.message || '請改用其他截圖格式'), 'error');
+        }
+      };
+      reader.onerror = () => showToast('讀取圖片檔案失敗，請重試。', 'error');
+      reader.readAsDataURL(file);
+    }
+
     async function runAiExtract() {
       const text = document.getElementById('aiRawInput').value.trim();
-      if (!text) {
-        showToast('請先輸入或貼上公文 / 通知文字！', 'warning');
+      if (!text && !aiAttachedImage) {
+        showToast('請先輸入公文通知文字，或貼上 / 上傳開會通知截圖！', 'warning');
         return;
       }
 
       const btn = document.getElementById('btnRunAiExtract');
       btn.disabled = true;
-      btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Gemini AI 正在深入解析語意...</span>';
+      btn.innerHTML = aiAttachedImage
+        ? '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Gemini AI 正在辨識截圖文字與排程...</span>'
+        : '<i class="fa-solid fa-circle-notch fa-spin"></i><span>Gemini AI 正在深入解析語意...</span>';
+
+      const reqBody = { action: 'aiExtractEvent', text };
+      if (aiAttachedImage) {
+        reqBody.imageBase64 = aiAttachedImage.base64;
+        reqBody.imageMimeType = aiAttachedImage.mimeType;
+      }
 
       try {
         const res = await safeFetch(getActiveGasUrl(), {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'aiExtractEvent', text })
-        }, 30000);
+          body: JSON.stringify(reqBody)
+        }, aiAttachedImage ? 45000 : 30000);
         const json = await res.json();
 
         if (json.status === 'success' && json.data) {

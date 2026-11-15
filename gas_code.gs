@@ -1065,7 +1065,7 @@ function getGeminiPreferredModel_() {
   return String(PropertiesService.getScriptProperties().getProperty('GEMINI_MODEL') || '').trim() || 'gemini-2.5-flash';
 }
 
-function callGeminiAPI(prompt, systemInstruction) {
+function callGeminiAPI(prompt, systemInstruction, mediaParts) {
   var apiKey = getGeminiApiKey();
   if (!apiKey) {
     throw new Error('未設定 GEMINI_API_KEY。請至網站右上角「設定 → 管理者設定」或後台 Google 試算表「系統設定」分頁填入 GEMINI_API_KEY。');
@@ -1075,10 +1075,31 @@ function callGeminiAPI(prompt, systemInstruction) {
   var models = ['gemini-2.5-flash', 'gemini-2.0-flash'];
   var preferredModel = getGeminiPreferredModel_();
 
+  var parts = [];
+  if (prompt !== undefined && prompt !== null && String(prompt).trim() !== '') {
+    parts.push({ text: String(prompt) });
+  }
+  if (Array.isArray(mediaParts) && mediaParts.length > 0) {
+    for (var p = 0; p < mediaParts.length; p++) {
+      var mp = mediaParts[p];
+      if (mp && mp.mimeType && mp.data) {
+        parts.push({
+          inlineData: {
+            mimeType: String(mp.mimeType),
+            data: String(mp.data)
+          }
+        });
+      }
+    }
+  }
+  if (parts.length === 0) {
+    throw new Error('請提供欲分析的文字或圖片內容');
+  }
+
   var payload = {
     contents: [
       {
-        parts: [{ text: prompt }]
+        parts: parts
       }
     ],
     generationConfig: {
@@ -1145,10 +1166,59 @@ function sensitiveInput_(value) {
   return false;
 }
 
-function aiExtractEvent(text) {
-  if (sensitiveInput_(text)) return { status: 'error', message: '內容可能含個資或機密資料，請移除後再送出。僅限公開、去識別化內容。' };
-  if (!text || String(text).trim() === '') {
-    return { status: 'error', message: '請提供欲解析的公文或通知文字內容。' };
+function normalizeAiImageInput_(rawBase64, rawMimeType) {
+  var b64 = String(rawBase64 || '').trim();
+  if (!b64) return null;
+
+  var mime = String(rawMimeType || '').trim().toLowerCase();
+  var dataUrlMatch = b64.match(/^data:([^;]+);base64,([\s\S]+)$/i);
+  if (dataUrlMatch) {
+    if (!mime) mime = String(dataUrlMatch[1] || '').trim().toLowerCase();
+    b64 = String(dataUrlMatch[2] || '');
+  }
+  b64 = b64.replace(/\s+/g, '');
+
+  if (mime === 'image/jpg') mime = 'image/jpeg';
+  var allowedMimes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+  if (allowedMimes.indexOf(mime) === -1) {
+    throw new Error('不支援的圖片格式（僅支援 PNG、JPG、WEBP 或 GIF 截圖）。');
+  }
+  if (!/^[A-Za-z0-9+/=]+$/.test(b64)) {
+    throw new Error('圖片資料格式異常，請重新貼上或選擇截圖。');
+  }
+  if (b64.length > 6000000) {
+    throw new Error('截圖檔案過大，請裁切或壓縮後再試。');
+  }
+  return { mimeType: mime, data: b64 };
+}
+
+function aiExtractEvent(input, optImageBase64, optImageMimeType) {
+  var text = '';
+  var rawBase64 = '';
+  var rawMimeType = '';
+  if (input && typeof input === 'object' && !Array.isArray(input)) {
+    text = String(input.text || '').trim();
+    rawBase64 = String(input.imageBase64 || '').trim();
+    rawMimeType = String(input.imageMimeType || '').trim();
+  } else {
+    text = String(input || '').trim();
+    rawBase64 = String(optImageBase64 || '').trim();
+    rawMimeType = String(optImageMimeType || '').trim();
+  }
+
+  if (text && sensitiveInput_(text)) {
+    return { status: 'error', message: '內容可能含個資或機密資料，請移除後再送出。僅限公開、去識別化內容。' };
+  }
+
+  var mediaPart = null;
+  try {
+    mediaPart = normalizeAiImageInput_(rawBase64, rawMimeType);
+  } catch (imgErr) {
+    return { status: 'error', message: imgErr.message };
+  }
+
+  if (!text && !mediaPart) {
+    return { status: 'error', message: '請提供欲解析的公文、通知文字或開會通知截圖。' };
   }
 
   var todayStr = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd');
@@ -1156,9 +1226,11 @@ function aiExtractEvent(text) {
 
   var systemPrompt = 
     "你是一位台灣中小學的校園智慧行政秘書。\n" +
-    "你的任務是從第一線教師或承辦人提供的非結構化公文、Email、校園Line通知或處室報告文字中，精準擷取會議排程資訊。\n" +
+    "你的任務是從第一線教師或承辦人提供的非結構化公文、Email、校園Line通知文字，或上傳/貼上的「開會通知單／公文／訊息截圖」圖片中，精準擷取會議排程資訊。\n" +
+    "若提供圖片，請先仔細 OCR 辨識圖片中的標題、主旨、日期（將民國年如 115 年換算為西元 2026 年）、時間（區分上午/下午為 24 小時制 HH:mm）、地點、主辦單位與出席人員；若同時提供文字與圖片，請交叉比對整合（文字補充優先於模糊影像）。\n" +
+    "若公文或圖片中含有個人敏感資訊（身分證字號、私人手機），請忽略且不得輸出於欄位中。若圖片文字模糊或缺漏年份、結束時間，請於 notes 欄位明確提醒使用者手動確認並合理評估 confidence。\n" +
     "今天是 " + todayStr + " (" + dayOfWeek + ")。如果是相對日期（例如「下週三」、「明天」），請換算成精確的 YYYY-MM-DD。\n" +
-    "本校作息節次對照：朝會(08:00-08:20)、第1節(08:30-09:15)、第2節(09:25-10:10)、第3節(10:20-11:05)、第4節(11:15-12:00)、午休(12:00-13:05)、第5節(13:10-13:55)、第6節(14:05-14:50)、第7節(15:00-15:45)、第8節(15:55-16:40)。若公文提及節次，請依對照換算為 HH:mm 並填入 periods 陣列；若未載明結束時間，預設為 1 小時。\n" +
+    "本校作息節次對照：朝會(08:00-08:20)、第1節(08:30-09:15)、第2節(09:25-10:10)、第3節(10:20-11:05)、第4節(11:15-12:00)、午休(12:00-13:05)、第5節(13:10-13:55)、第6節(14:05-14:50)、第7節(15:00-15:45)、第8節(15:55-16:40)。若公文或截圖提及節次，請依對照換算為 HH:mm 並填入 periods 陣列；若未載明結束時間，預設為 1 小時。\n" +
     "請以 JSON 物件輸出，嚴格符合下列鍵名：\n" +
     "{\n" +
     '  "title": "會議精簡標題",\n' +
@@ -1175,8 +1247,17 @@ function aiExtractEvent(text) {
     '  "notes": "解析補充提醒（如有缺漏時提醒使用者手動確認）"\n' +
     "}";
 
+  var userPrompt = text;
+  if (mediaPart) {
+    userPrompt = text
+      ? "請搭配附上的開會通知 / 公文截圖圖片與下列補充文字，擷取完整會議排程資訊：\n\n" + text
+      : "請辨識並解析附圖（開會通知單 / 公文 / LINE 訊息截圖）中的會議名稱、日期、時間或節次、地點、主辦處室、參與單位與重點事項。";
+  }
+
   try {
-    var jsonText = callGeminiAPI(text, systemPrompt);
+    var jsonText = mediaPart
+      ? callGeminiAPI(userPrompt, systemPrompt, [mediaPart])
+      : callGeminiAPI(userPrompt, systemPrompt);
     var parsed = JSON.parse(jsonText);
     return { status: 'success', data: parsed };
   } catch (err) {
@@ -1364,7 +1445,11 @@ function doPost(e) {
     } else if (action === 'saveAdminSettings') {
       responseData = saveAdminSettings(payload.token, payload.settings);
     } else if (action === 'aiExtractEvent') {
-      responseData = aiExtractEvent(payload.text);
+      responseData = aiExtractEvent({
+        text: payload.text,
+        imageBase64: payload.imageBase64,
+        imageMimeType: payload.imageMimeType
+      });
     } else if (action === 'aiGenerateAgenda') {
       responseData = aiGenerateAgenda(payload.meetingData);
     } else if (action === 'aiGenerateMinutes') {

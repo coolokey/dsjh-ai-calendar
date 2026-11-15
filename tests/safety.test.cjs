@@ -113,6 +113,7 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
     reset() {},
     appendChild() {},
     remove() {},
+    removeAttribute(k) { delete this[k]; },
     addEventListener() {},
     ...extra
   });
@@ -213,6 +214,25 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.equal(ctx.getFormParticipants(), '教務處、七年級導師、家長會、志工隊');
   ctx.buildDynamicCategoryLegend();
   assert.match(elements.get('legendFilterBar').innerHTML, /處室會議/);
+
+  // AI screenshot attach / clear helpers toggle preview box and clear input cleanly
+  ctx.setAiAttachedImage({
+    dataUrl: 'data:image/png;base64,iVBORw0K',
+    mimeType: 'image/png',
+    base64: 'iVBORw0K',
+    fileName: '開會通知.png',
+    width: 800,
+    height: 600,
+    kb: 12
+  });
+  assert.equal(elements.get('aiImagePreviewBox').classList.contains('hidden'), false);
+  assert.equal(elements.get('aiImageEmptyState').classList.contains('hidden'), true);
+  assert.match(elements.get('aiImageMeta').innerText, /開會通知\.png/);
+  elements.get('aiRawInput').value = '補充備註';
+  ctx.clearAiExtractInput();
+  assert.equal(elements.get('aiRawInput').value, '');
+  assert.equal(elements.get('aiImagePreviewBox').classList.contains('hidden'), true);
+  assert.equal(elements.get('aiImageEmptyState').classList.contains('hidden'), false);
 
   // Chronological sort helper keeps earlier startTime first
   const sorted = ctx.sortEventsChronological([
@@ -583,5 +603,62 @@ test('admin credentials and Gemini API key sync bidirectionally with spreadsheet
   const lockedLogin = ctx.loginAdmin('DaxiAdmin2026');
   assert.equal(lockedLogin.status, 'error');
   assert.match(lockedLogin.message, /暫時鎖定|15 分鐘/);
+});
+
+test('aiExtractEvent and callGeminiAPI support multimodal meeting screenshot extraction safely', () => {
+  const fetchPayloads = [];
+  const ctx = vm.createContext({
+    console,
+    Utilities: {formatDate: () => '2026-11-16'},
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (k === 'GEMINI_API_KEY' ? 'test-vision-key' : null)
+      })
+    },
+    UrlFetchApp: {
+      fetch: (_url, opts) => {
+        fetchPayloads.push(JSON.parse(opts.payload));
+        return {
+          getResponseCode: () => 200,
+          getContentText: () => JSON.stringify({
+            candidates: [{
+              content: {
+                parts: [{
+                  text: '{"title":"期末課發會","date":"2026-11-25","startTime":"13:10","endTime":"14:50","periods":["第5節","第6節"],"location":"行政大樓3F教師研習中心","department":"教務處","participants":["教務處"],"category":"教學研討","confidence":"high"}'
+                }]
+              }
+            }]
+          })
+        };
+      }
+    }
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../gas_code.gs'), 'utf8'), ctx);
+
+  // Image-only notice screenshot extraction strips data URL prefix and sends inlineData
+  const imgOnlyRes = ctx.aiExtractEvent({
+    text: '',
+    imageBase64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+    imageMimeType: ''
+  });
+  assert.equal(imgOnlyRes.status, 'success');
+  assert.equal(imgOnlyRes.data.title, '期末課發會');
+  assert.equal(fetchPayloads.length, 1);
+  assert.equal(fetchPayloads[0].contents[0].parts.length, 2);
+  assert.equal(fetchPayloads[0].contents[0].parts[1].inlineData.mimeType, 'image/png');
+  assert.match(fetchPayloads[0].contents[0].parts[1].inlineData.data, /^iVBORw0K/);
+
+  // Unsupported MIME type and sensitive text are rejected without calling Gemini
+  const badMimeRes = ctx.aiExtractEvent({ text: '', imageBase64: 'QUJD', imageMimeType: 'application/pdf' });
+  assert.equal(badMimeRes.status, 'error');
+  assert.equal(fetchPayloads.length, 1);
+
+  const sensitiveImgRes = ctx.aiExtractEvent({
+    text: '學生身分證 A123456789 會議',
+    imageBase64: 'QUJD',
+    imageMimeType: 'image/jpeg'
+  });
+  assert.equal(sensitiveImgRes.status, 'error');
+  assert.equal(fetchPayloads.length, 1);
 });
 
