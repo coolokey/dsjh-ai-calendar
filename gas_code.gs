@@ -5,12 +5,13 @@
 // ====================================================================
 
 var SHEET_NAME = '會議資料';
+var AUDIT_SHEET_NAME = '異動紀錄';
 
 // ── 取得或自動建立 Google 試算表資料庫 ─────────────────────────────────
-function getSheet() {
+function getSpreadsheet_() {
   var props = PropertiesService.getScriptProperties();
   var spreadsheetId = props.getProperty('SPREADSHEET_ID');
-  var ss;
+  var ss = null;
   if (spreadsheetId) {
     try {
       ss = SpreadsheetApp.openById(spreadsheetId);
@@ -22,9 +23,63 @@ function getSheet() {
     ss = SpreadsheetApp.create('校園智慧行事曆資料庫 (AI Agent)');
     props.setProperty('SPREADSHEET_ID', ss.getId());
   }
+  return ss;
+}
+
+function getAuditSheet_(ss) {
+  var auditSheet = ss.getSheetByName(AUDIT_SHEET_NAME);
+  if (!auditSheet) {
+    auditSheet = ss.insertSheet(AUDIT_SHEET_NAME);
+    var header = ['異動時間', '操作類型', '會議ID', '會議名稱', '日期', '開始時間',
+                  '結束時間', '地點', '主辦單位/部門', '分類', '說明備註'];
+    auditSheet.appendRow(header);
+    auditSheet.getRange(1, 1, 1, header.length)
+              .setFontWeight('bold')
+              .setBackground('#0f172a')
+              .setFontColor('#ffffff');
+    auditSheet.setFrozenRows(1);
+    auditSheet.setColumnWidths(1, 11, 125);
+    auditSheet.setColumnWidth(4, 220);
+    auditSheet.setColumnWidth(8, 160);
+    auditSheet.setColumnWidth(11, 260);
+  }
+  return auditSheet;
+}
+
+function appendAuditLog_(actionType, ev) {
+  try {
+    var ss = getSpreadsheet_();
+    var auditSheet = getAuditSheet_(ss);
+    var nowStr = Utilities.formatDate(new Date(), 'Asia/Taipei', 'yyyy-MM-dd HH:mm:ss');
+    auditSheet.appendRow([
+      nowStr,
+      actionType,
+      String(ev.id || ''),
+      String(ev.title || ''),
+      "'" + formatDate(ev.date),
+      "'" + formatTime(ev.startTime),
+      "'" + formatTime(ev.endTime),
+      String(ev.location || ''),
+      String(ev.department || ''),
+      String(ev.category || ''),
+      String(ev.description || '')
+    ]);
+  } catch (e) {
+    console.warn('appendAuditLog_ failed:', e);
+  }
+}
+
+function getSheet() {
+  var ss = getSpreadsheet_();
   var sheet = ss.getSheetByName(SHEET_NAME);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    var defaultSheet = ss.getSheetByName('工作表1') || ss.getSheetByName('Sheet1');
+    if (defaultSheet && defaultSheet.getLastRow() === 0) {
+      defaultSheet.setName(SHEET_NAME);
+      sheet = defaultSheet;
+    } else {
+      sheet = ss.insertSheet(SHEET_NAME);
+    }
     var header = ['ID', '標題', '日期', '開始時間', '結束時間', '地點',
                   '主辦單位/部門', '分類', '說明備註', '密碼(Hash)', '建立時間'];
     sheet.appendRow(header);
@@ -37,6 +92,23 @@ function getSheet() {
     sheet.setColumnWidth(2, 220);
     sheet.setColumnWidth(6, 160);
     sheet.setColumnWidth(9, 260);
+  }
+
+  try {
+    getAuditSheet_(ss);
+    var sheets = ss.getSheets();
+    if (sheets.length > 0 && sheets[0].getName() !== SHEET_NAME) {
+      ss.setActiveSheet(sheet);
+      ss.moveActiveSheet(1);
+    }
+    ['工作表1', 'Sheet1'].forEach(function (blankName) {
+      var blank = ss.getSheetByName(blankName);
+      if (blank && blank.getLastRow() === 0 && ss.getSheets().length > 1) {
+        ss.deleteSheet(blank);
+      }
+    });
+  } catch (layoutErr) {
+    // 忽略分頁排序清理之非致命例外，避免影響主要讀寫流程
   }
   return sheet;
 }
@@ -218,9 +290,20 @@ function addEvent(payload) {
       pwdHash,
       nowStr
     ]);
+    appendAuditLog_('新增預約', {
+      id: id,
+      title: title,
+      date: date,
+      startTime: startTime,
+      endTime: endTime,
+      location: location,
+      department: department,
+      category: category,
+      description: description
+    });
 
     SpreadsheetApp.flush();
-    return { status: 'success', message: '會議已成功登記！', id: id };
+    return { status: 'success', message: '會議已成功登記並寫入雲端試算表！', id: id };
   } finally {
     lock.releaseLock();
   }
@@ -297,6 +380,18 @@ function updateEvent(payload) {
           sheet.getRange(rowIdx, 10).setValue(hashPassword(String(payload.newPassword).trim()));
         }
 
+        appendAuditLog_('修改排程', {
+          id: id,
+          title: title,
+          date: date,
+          startTime: startTime,
+          endTime: endTime,
+          location: location,
+          department: department,
+          category: category,
+          description: description
+        });
+
         SpreadsheetApp.flush();
         return { status: 'success', message: '會議已成功更新！' };
       }
@@ -334,7 +429,19 @@ function deleteEvent(payload) {
           return { status: 'error', message: '刪除密碼不正確，無法刪除此筆會議。' };
         }
 
+        var oldRow = data[i];
         sheet.deleteRow(i + 1);
+        appendAuditLog_('刪除排程', {
+          id: id,
+          title: oldRow[1],
+          date: oldRow[2],
+          startTime: oldRow[3],
+          endTime: oldRow[4],
+          location: oldRow[5],
+          department: oldRow[6],
+          category: oldRow[7],
+          description: oldRow[8]
+        });
         SpreadsheetApp.flush();
         return { status: 'success', message: '會議已成功刪除。' };
       }
@@ -604,12 +711,15 @@ function doGet(e) {
     } else if (action === 'ping') {
       var hasApiKey = Boolean(getGeminiApiKey());
       var sheet = getSheet();
-      var ssUrl = sheet.getParent() ? sheet.getParent().getUrl() : '';
+      var ss = sheet.getParent();
       responseData = {
         status: 'success',
         message: '校園智慧行事曆後端服務運行正常',
         hasGeminiApiKey: hasApiKey,
-        spreadsheetUrl: ssUrl,
+        spreadsheetUrl: ss ? ss.getUrl() : '',
+        spreadsheetName: ss ? ss.getName() : '',
+        sheetName: SHEET_NAME,
+        auditSheetName: AUDIT_SHEET_NAME,
         eventCount: Math.max(0, sheet.getLastRow() - 1)
       };
     } else {

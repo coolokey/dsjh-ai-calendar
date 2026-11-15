@@ -192,6 +192,9 @@
 
         <!-- 分隔工具組 -->
         <div class="hidden sm:flex items-center pl-1.5 ml-0.5 border-l border-slate-200 gap-0.5">
+          <a id="headerSheetLink" href="#" onclick="return handleOpenSheetClick(event)" target="_blank" rel="noopener noreferrer" class="p-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-all cursor-pointer" title="開啟後台 Google 試算表資料庫">
+            <i class="fa-solid fa-table text-base"></i>
+          </a>
           <button type="button" onclick="exportToCsv()" class="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-all cursor-pointer" title="匯出 CSV 試算表">
             <i class="fa-solid fa-file-csv text-base"></i>
           </button>
@@ -755,6 +758,31 @@
         </button>
       </div>
 
+      <!-- 後台雲端試算表資料庫 -->
+      <div id="backendSheetCard" class="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 space-y-2.5">
+        <div class="flex flex-wrap items-start justify-between gap-2">
+          <div class="space-y-0.5 min-w-0">
+            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-900">
+              <i class="fa-solid fa-table text-emerald-600"></i>
+              <span>後台雲端試算表資料庫</span>
+            </div>
+            <p id="backendSheetName" class="text-xs font-semibold text-slate-800 truncate">正在讀取試算表資訊...</p>
+            <p id="backendSheetMetaText" class="text-[11px] text-slate-600">分頁：會議資料（全行事曆事項）、異動紀錄（增刪修歷程）</p>
+          </div>
+          <div class="flex items-center gap-1.5 shrink-0">
+            <a id="setupSheetOpenBtn" href="#" onclick="return handleOpenSheetClick(event)" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer">
+              <i class="fa-solid fa-arrow-up-right-from-square text-[11px]"></i> 開啟 Google 試算表
+            </a>
+            <button type="button" id="btnCopySheetUrl" onclick="copyBackendSheetUrl()" disabled class="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed" title="複製 Google 試算表連結">
+              <i class="fa-regular fa-copy"></i> 複製網址
+            </button>
+          </div>
+        </div>
+        <p class="text-[11px] text-emerald-800/80 leading-relaxed border-t border-emerald-200/70 pt-2">
+          ※ 行事曆的新增、修改與刪除皆即時寫入此試算表。若需改用學校既有 Google 試算表，請至 Google Apps Script「專案設定」→「指令碼屬性」設定 <code class="bg-white/80 px-1 py-0.5 rounded border border-emerald-200 font-mono">SPREADSHEET_ID</code>。
+        </p>
+      </div>
+
       <!-- 連線網址配置區 -->
       <div class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
         <label for="settingGasUrl" class="block text-xs font-bold text-slate-800">
@@ -974,6 +1002,116 @@
       }
     }
 
+    let backendSheetInfo = {
+      url: '',
+      name: '',
+      sheetName: '會議資料',
+      auditSheetName: '異動紀錄',
+      eventCount: 0,
+      loading: false,
+      loadedForGasUrl: ''
+    };
+
+    function applyBackendSheetPayload(gasUrl, json) {
+      if (!json || json.status !== 'success') return;
+      const validUrl = (json.spreadsheetUrl && /^https:\/\//i.test(json.spreadsheetUrl))
+        ? String(json.spreadsheetUrl)
+        : '';
+      if (validUrl) backendSheetInfo.url = validUrl;
+      if (json.spreadsheetName) backendSheetInfo.name = String(json.spreadsheetName);
+      if (json.sheetName) backendSheetInfo.sheetName = String(json.sheetName);
+      if (json.auditSheetName) backendSheetInfo.auditSheetName = String(json.auditSheetName);
+      if (typeof json.eventCount === 'number' || (json.eventCount !== undefined && json.eventCount !== null)) {
+        backendSheetInfo.eventCount = Number(json.eventCount) || 0;
+      }
+      backendSheetInfo.loadedForGasUrl = gasUrl;
+      backendSheetInfo.loading = false;
+      syncBackendSheetUi();
+    }
+
+    function syncBackendSheetUi() {
+      const headerLink = document.getElementById('headerSheetLink');
+      const setupBtn = document.getElementById('setupSheetOpenBtn');
+      const copyBtn = document.getElementById('btnCopySheetUrl');
+      const nameEl = document.getElementById('backendSheetName');
+      const metaEl = document.getElementById('backendSheetMetaText');
+
+      const hasValidUrl = Boolean(backendSheetInfo.url && /^https:\/\//i.test(backendSheetInfo.url));
+      const count = eventsData.length || backendSheetInfo.eventCount || 0;
+
+      if (headerLink) {
+        headerLink.href = hasValidUrl ? backendSheetInfo.url : '#';
+        headerLink.title = hasValidUrl
+          ? `開啟後台 Google 試算表：${backendSheetInfo.name || '雲端試算表資料庫'}`
+          : '開啟後台 Google 試算表資料庫';
+      }
+      if (setupBtn) {
+        setupBtn.href = hasValidUrl ? backendSheetInfo.url : '#';
+        setupBtn.classList.toggle('opacity-60', !hasValidUrl);
+      }
+      if (copyBtn) {
+        copyBtn.disabled = !hasValidUrl;
+      }
+      if (nameEl) {
+        if (hasValidUrl) {
+          nameEl.innerText = `${backendSheetInfo.name || 'Google 試算表資料庫'}（已連線）`;
+        } else if (backendSheetInfo.loading) {
+          nameEl.innerText = '正在讀取試算表資訊...';
+        } else {
+          nameEl.innerText = '尚未取得試算表連結（請點擊下方「測試連線 (Ping)」）';
+        }
+      }
+      if (metaEl) {
+        metaEl.innerText = `分頁：${backendSheetInfo.sheetName}（目前 ${count} 筆）、${backendSheetInfo.auditSheetName}（增刪修歷程）`;
+      }
+    }
+
+    async function fetchBackendSheetMeta(gasUrl) {
+      const targetUrl = gasUrl || getActiveGasUrl();
+      if (!targetUrl || backendSheetInfo.loading) return;
+      backendSheetInfo.loading = true;
+      syncBackendSheetUi();
+      try {
+        const res = await safeFetch(`${targetUrl}?action=ping`, {}, 15000);
+        const json = await res.json();
+        if (json && json.status === 'success') {
+          applyBackendSheetPayload(targetUrl, json);
+        }
+      } catch (err) {
+        // 靜默失敗以免干擾主要行事曆渲染；使用者可從設定視窗手動 Ping 檢視詳細原因
+      } finally {
+        backendSheetInfo.loading = false;
+        syncBackendSheetUi();
+      }
+    }
+
+    function handleOpenSheetClick(event) {
+      if (backendSheetInfo.url && /^https:\/\//i.test(backendSheetInfo.url)) {
+        return true;
+      }
+      if (event && typeof event.preventDefault === 'function') event.preventDefault();
+      showToast('正在取得試算表網址，請稍候或先點擊「測試連線 (Ping)」！', 'info');
+      openSetupModal();
+      return false;
+    }
+
+    async function copyBackendSheetUrl() {
+      if (!backendSheetInfo.url || !/^https:\/\//i.test(backendSheetInfo.url)) {
+        showToast('尚未取得試算表網址，請先點擊「測試連線 (Ping)」。', 'error');
+        return;
+      }
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(backendSheetInfo.url);
+          showToast('已複製後台 Google 試算表網址！', 'success');
+        } else {
+          showToast('此瀏覽器不支援剪貼簿功能，請直接點擊「開啟 Google 試算表」。', 'info');
+        }
+      } catch (err) {
+        showToast('複製網址失敗，請直接點擊「開啟 Google 試算表」。', 'error');
+      }
+    }
+
     // ── 載入正式雲端行事曆資料 ────────────────────────────────
     async function fetchLiveEvents() {
       const url = getActiveGasUrl();
@@ -993,6 +1131,12 @@
           eventsData = Array.isArray(json.data) ? json.data : [];
           hasFetchError = false;
           updateConnectionBadge('connected');
+          if (!backendSheetInfo.url || backendSheetInfo.loadedForGasUrl !== url) {
+            fetchBackendSheetMeta(url);
+          } else {
+            backendSheetInfo.eventCount = eventsData.length;
+            syncBackendSheetUi();
+          }
         } else {
           hasFetchError = true;
           updateConnectionBadge('error');
@@ -2394,6 +2538,11 @@
       const current = localStorage.getItem(STORAGE_KEY_GAS_URL);
       input.value = (current && current !== 'DEMO_MODE') ? current : DEFAULT_GAS_URL;
       document.getElementById('pingResultBox').classList.add('hidden');
+      syncBackendSheetUi();
+      const activeUrl = getActiveGasUrl();
+      if (!backendSheetInfo.url || backendSheetInfo.loadedForGasUrl !== activeUrl) {
+        fetchBackendSheetMeta(activeUrl);
+      }
       openModal('setupModal');
     }
 
@@ -2409,6 +2558,10 @@
         showToast('已成功儲存並套用自訂雲端連線網址！', 'success');
       }
 
+      backendSheetInfo.url = '';
+      backendSheetInfo.name = '';
+      backendSheetInfo.loadedForGasUrl = '';
+      syncBackendSheetUi();
       closeModal('setupModal');
       fetchLiveEvents();
     }
@@ -2416,6 +2569,10 @@
     function restoreDefaultGasUrl() {
       localStorage.removeItem(STORAGE_KEY_GAS_URL);
       document.getElementById('settingGasUrl').value = DEFAULT_GAS_URL;
+      backendSheetInfo.url = '';
+      backendSheetInfo.name = '';
+      backendSheetInfo.loadedForGasUrl = '';
+      syncBackendSheetUi();
       const pingBox = document.getElementById('pingResultBox');
       pingBox.className = 'p-3 rounded-xl text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 block';
       pingBox.innerHTML = '<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i> 已還原為官方預設後端網址並重新同步';
@@ -2438,6 +2595,7 @@
         const json = await res.json();
 
         if (json.status === 'success') {
+          applyBackendSheetPayload(val, json);
           const apiStatus = json.hasGeminiApiKey ? 'Gemini AI 金鑰就緒' : '尚未設定 GEMINI_API_KEY';
           let sheetInfo = '';
           if (json.spreadsheetUrl && /^https:\/\//i.test(json.spreadsheetUrl)) {

@@ -175,5 +175,162 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
     {date: '2026-11-25', startTime: '08:30', endTime: '09:30'}
   ]);
   assert.equal(sorted[0].startTime, '08:30');
+
+  // Backend Google Sheet metadata hydrates Header link & Setup Modal card safely
+  ctx.applyBackendSheetPayload(ctx.getActiveGasUrl(), {
+    status: 'success',
+    spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/test-sheet/edit',
+    spreadsheetName: '校園智慧行事曆資料庫 (AI Agent)',
+    sheetName: '會議資料',
+    auditSheetName: '異動紀錄',
+    eventCount: 1
+  });
+  assert.equal(elements.get('headerSheetLink').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
+  assert.equal(elements.get('setupSheetOpenBtn').href, 'https://docs.google.com/spreadsheets/d/test-sheet/edit');
+  assert.equal(elements.get('btnCopySheetUrl').disabled, false);
+  assert.match(elements.get('backendSheetName').innerText, /校園智慧行事曆資料庫/);
+  assert.match(elements.get('backendSheetMetaText').innerText, /會議資料.*異動紀錄/);
+});
+
+test('backend spreadsheet organizes tabs cleanly and records full audit history on add, update, and delete', () => {
+  const makeMockSheet = (name, initialRows = []) => {
+    const rows = initialRows.map(r => [...r]);
+    const sheetObj = {
+      _name: name,
+      getName: () => sheetObj._name,
+      setName: (n) => { sheetObj._name = n; },
+      getParent: () => ss,
+      getLastRow: () => rows.length,
+      appendRow: (r) => rows.push([...r]),
+      getDataRange: () => ({ getValues: () => rows.map(r => [...r]) }),
+      deleteRow: (rowIdx) => { rows.splice(rowIdx - 1, 1); },
+      getRange: (rowIdx, colIdx) => {
+        const rangeObj = {
+          setValue: (v) => { rows[rowIdx - 1][colIdx - 1] = v; },
+          setFontWeight: () => rangeObj,
+          setBackground: () => rangeObj,
+          setFontColor: () => rangeObj
+        };
+        return rangeObj;
+      },
+      setFrozenRows: () => {},
+      setColumnWidths: () => {},
+      setColumnWidth: () => {},
+      _rows: rows
+    };
+    return sheetObj;
+  };
+
+  let sheets = [
+    makeMockSheet('工作表1', []),
+    makeMockSheet('會議資料', [['ID', '標題', '日期', '開始時間', '結束時間', '地點', '主辦單位/部門', '分類', '說明備註', '密碼(Hash)', '建立時間']])
+  ];
+  let activeSheet = sheets[0];
+  const ss = {
+    getId: () => 'sheet-id-1',
+    getUrl: () => 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit',
+    getName: () => '校園智慧行事曆資料庫 (AI Agent)',
+    getSheets: () => [...sheets],
+    getSheetByName: (name) => sheets.find(s => s.getName() === name) || null,
+    insertSheet: (name) => {
+      const s = makeMockSheet(name, []);
+      sheets.push(s);
+      return s;
+    },
+    setActiveSheet: (s) => { activeSheet = s; },
+    moveActiveSheet: (pos) => {
+      sheets = sheets.filter(s => s !== activeSheet);
+      sheets.splice(pos - 1, 0, activeSheet);
+    },
+    deleteSheet: (target) => {
+      sheets = sheets.filter(s => s !== target);
+    }
+  };
+
+  const propsMap = new Map([['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'k']]);
+  let pingPayload = '';
+  const ctx = vm.createContext({
+    console,
+    Utilities: {
+      getUuid: () => 'abcd1234-5678-90ef',
+      formatDate: () => '2026-11-15 23:00:00',
+      DigestAlgorithm: { SHA_256: 'SHA_256' },
+      Charset: { UTF_8: 'UTF_8' },
+      computeDigest: () => []
+    },
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (k) => (propsMap.has(k) ? propsMap.get(k) : null),
+        setProperty: (k, v) => propsMap.set(k, v)
+      })
+    },
+    SpreadsheetApp: {
+      openById: (id) => (id === 'sheet-id-1' ? ss : null),
+      create: () => ss,
+      flush: () => {}
+    },
+    LockService: {
+      getScriptLock: () => ({ waitLock: () => {}, releaseLock: () => {} })
+    },
+    ContentService: {
+      MimeType: { JSON: 'application/json' },
+      createTextOutput: (txt) => ({
+        setMimeType: () => { pingPayload = txt; return txt; }
+      })
+    }
+  });
+  vm.runInContext(fs.readFileSync(path.join(__dirname, '../gas_code.gs'), 'utf8'), ctx);
+
+  // Initializing sheet moves 會議資料 first, creates 異動紀錄, and deletes blank 工作表1
+  const mainSheet = ctx.getSheet();
+  assert.deepEqual(sheets.map(s => s.getName()), ['會議資料', '異動紀錄']);
+
+  // Create -> Update -> Delete flow logs every operation to 異動紀錄
+  const addRes = ctx.addEvent({
+    title: '校務發展會議',
+    date: '2026-11-20',
+    startTime: '09:00',
+    endTime: '10:30',
+    location: '第二會議室',
+    department: '教務處',
+    category: '處室會議',
+    description: '討論期中評量',
+    password: ''
+  });
+  assert.equal(addRes.status, 'success');
+  assert.equal(mainSheet._rows.length, 2);
+
+  const updRes = ctx.updateEvent({
+    id: addRes.id,
+    title: '校務發展會議（改期）',
+    date: '2026-11-21',
+    startTime: '10:00',
+    endTime: '11:30',
+    location: '第二會議室',
+    department: '教務處',
+    category: '處室會議',
+    description: '改為週六上午',
+    password: ''
+  });
+  assert.equal(updRes.status, 'success');
+  assert.equal(mainSheet._rows[1][1], '校務發展會議（改期）');
+
+  const delRes = ctx.deleteEvent({ id: addRes.id, password: '' });
+  assert.equal(delRes.status, 'success');
+  assert.equal(mainSheet._rows.length, 1);
+
+  const auditSheet = ss.getSheetByName('異動紀錄');
+  assert.equal(auditSheet._rows.length, 4);
+  assert.deepEqual(auditSheet._rows.slice(1).map(r => r[1]), ['新增預約', '修改排程', '刪除排程']);
+  assert.equal(auditSheet._rows[2][3], '校務發展會議（改期）');
+
+  // ping reports spreadsheet URL, name, sheet names, and current count
+  ctx.doGet({ parameter: { action: 'ping' } });
+  const ping = JSON.parse(pingPayload);
+  assert.equal(ping.status, 'success');
+  assert.equal(ping.spreadsheetUrl, 'https://docs.google.com/spreadsheets/d/sheet-id-1/edit');
+  assert.equal(ping.sheetName, '會議資料');
+  assert.equal(ping.auditSheetName, '異動紀錄');
+  assert.equal(ping.eventCount, 0);
 });
 
