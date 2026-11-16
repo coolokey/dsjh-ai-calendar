@@ -449,6 +449,29 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.equal(postAttemptedOnConflict, false);
   assert.equal(elements.get('formConflictAlert').classList.contains('hidden'), false);
   assert.match(elements.get('formConflictMsg').innerText, /參與人員衝堂/);
+
+  // Legacy event with empty participants col & "參加人員：..." in description still triggers participant conflict
+  vm.runInContext(`eventsData = [{
+    id: 'fcffd1f5',
+    title: '免試入學試模擬會議',
+    date: '2026-11-24',
+    startTime: '12:40',
+    endTime: '13:05',
+    location: '行政大樓3F教師研習中心',
+    department: '教務處',
+    participants: '',
+    description: '參加人員：張致信主任、九年級導師、註冊組長、註冊組幹事。備註：準時開始。'
+  }];`, ctx);
+  const legacyConflict = ctx.detectEventConflict({
+    date: '2026-11-24',
+    startTime: '12:40',
+    endTime: '13:05',
+    location: '圖書館',
+    participants: '八年級導師、九年級導師'
+  });
+  assert.ok(legacyConflict);
+  assert.equal(legacyConflict.type, 'participants');
+  assert.deepEqual([...legacyConflict.overlappingParticipants], ['九年級導師']);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
@@ -900,5 +923,38 @@ test('backend conflict detection rejects overlapping location or overlapping par
   });
   assert.equal(updConflict.status, 'conflict');
   assert.equal(updConflict.conflictType, 'participants');
+
+  // Legacy spreadsheet row with blank col 13 & "參加人員：..." inside description blocks overlapping booking
+  const legacyRowRes = ctx.addEvent({
+    title: '歷史試模擬會議',
+    date: '2026-11-24',
+    startTime: '12:40',
+    endTime: '13:05',
+    location: '行政大樓3F教師研習中心',
+    department: '教務處',
+    participants: '',
+    description: '參加人員：張致信主任、九年級導師、註冊組長、註冊組幹事。備註：會議準點開始。',
+    category: '處室會議',
+    password: 'pwd5'
+  });
+  assert.equal(legacyRowRes.status, 'success');
+
+  const dupAgainstLegacy = ctx.addEvent({
+    title: '與歷史會議同時不同室撞期測試',
+    date: '2026-11-24',
+    startTime: '12:40',
+    endTime: '13:05',
+    location: '圖書館',
+    department: '教務處',
+    participants: '八年級導師、九年級導師',
+    category: '教學研討',
+    password: 'pwd6'
+  });
+  assert.equal(dupAgainstLegacy.status, 'conflict');
+  assert.equal(dupAgainstLegacy.conflictType, 'participants');
+  assert.deepEqual([...dupAgainstLegacy.overlappingParticipants], ['九年級導師']);
+
+  const legacyFetched = ctx.getEvents().find(ev => ev.id === legacyRowRes.id);
+  assert.equal(legacyFetched.participants, '張致信主任、九年級導師、註冊組長、註冊組幹事');
 });
 

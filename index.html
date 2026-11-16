@@ -1495,7 +1495,11 @@
         const json = await res.json();
         if (json.status === 'success') {
           eventsData = Array.isArray(json.data)
-            ? json.data.map(ev => ({ ...ev, date: normalizeClientDateStr(ev.date) }))
+            ? json.data.map(ev => ({
+              ...ev,
+              date: normalizeClientDateStr(ev.date),
+              participants: getEffectiveParticipants(ev)
+            }))
             : [];
           hasFetchError = false;
           updateConnectionBadge('connected');
@@ -2448,6 +2452,24 @@
       syncCategoryPreview();
     }
 
+    function extractLegacyParticipants(description) {
+      const desc = String(description || '').trim();
+      if (!desc) return '';
+      const match = desc.match(/(?:參加|參與|出席|與會)(?:人員|單位|對象)\s*(?:[：:]|包含|包括|為)\s*([^\n。；;]+)/i);
+      if (!match || !match[1]) return '';
+      const rawSegment = match[1]
+        .replace(/(?:備註|說明|注意事項|請攜帶|地點|時間)[：:].*$/i, '')
+        .replace(/(?:及|與|和)相關.*$/i, '')
+        .replace(/等[人單位]*$/i, '')
+        .trim();
+      return parseParticipantTokens(rawSegment).map(t => t.label).join('、');
+    }
+
+    function getEffectiveParticipants(ev) {
+      if (!ev) return '';
+      return String(ev.participants || '').trim() || extractLegacyParticipants(ev.description);
+    }
+
     // ── 參與單位複選與「其他」展開控制 ────────────────────────
     function parseParticipantTokens(rawInput) {
       const rawList = Array.isArray(rawInput)
@@ -2690,7 +2712,7 @@
         const exLoc = String(ex.location || '').trim().replace(/\s+/g, '').toLowerCase();
         const sameLocation = Boolean(normLoc && exLoc && exLoc === normLoc);
 
-        const exTokenKeys = new Set(parseParticipantTokens(ex.participants).map(t => t.key));
+        const exTokenKeys = new Set(parseParticipantTokens(getEffectiveParticipants(ex)).map(t => t.key));
         const overlappingParticipants = reqTokens
           .filter(t => exTokenKeys.has(t.key))
           .map(t => t.label);

@@ -413,6 +413,26 @@ function parseParticipantTokens_(raw) {
   return tokens;
 }
 
+function extractLegacyParticipants_(description) {
+  var desc = String(description || '').trim();
+  if (!desc) return '';
+  var match = desc.match(/(?:參加|參與|出席|與會)(?:人員|單位|對象)\s*(?:[：:]|包含|包括|為)\s*([^\n。；;]+)/i);
+  if (!match || !match[1]) return '';
+  var rawSegment = match[1]
+    .replace(/(?:備註|說明|注意事項|請攜帶|地點|時間)[：:].*$/i, '')
+    .replace(/(?:及|與|和)相關.*$/i, '')
+    .replace(/等[人單位]*$/i, '')
+    .trim();
+  return parseParticipantTokens_(rawSegment)
+    .map(function (t) { return t.label; })
+    .join('、');
+}
+
+function getEffectiveEventParticipants_(participantsCell, descriptionCell) {
+  var raw = String(participantsCell || '').trim();
+  return raw || extractLegacyParticipants_(descriptionCell);
+}
+
 function findOverlappingParticipants_(reqTokens, existingRawParticipants) {
   if (!reqTokens || reqTokens.length === 0) return [];
   var existingTokens = parseParticipantTokens_(existingRawParticipants);
@@ -455,7 +475,8 @@ function checkConflict(date, startTime, endTime, location, excludeId, participan
 
     var rLoc = String(row[5] || '').trim().replace(/\s+/g, '').toLowerCase();
     var sameLocation = Boolean(normLoc && rLoc && rLoc === normLoc);
-    var overlappingParticipants = findOverlappingParticipants_(reqParticipantTokens, row[12]);
+    var rowParticipants = getEffectiveEventParticipants_(row[12], row[8]);
+    var overlappingParticipants = findOverlappingParticipants_(reqParticipantTokens, rowParticipants);
 
     if (sameLocation || overlappingParticipants.length > 0) {
       var conflictType = sameLocation && overlappingParticipants.length > 0
@@ -473,7 +494,7 @@ function checkConflict(date, startTime, endTime, location, excludeId, participan
           endTime: rEnd,
           location: row[5],
           department: row[6],
-          participants: String(row[12] || '')
+          participants: rowParticipants
         }
       };
     }
@@ -527,7 +548,7 @@ function getEvents() {
       createdAt: row[10] ? formatDate(row[10]) : '',
       hasPassword: Boolean(String(row[9] || '').trim()),
       periods: String(row[11] || ''),
-      participants: String(row[12] || ''),
+      participants: getEffectiveEventParticipants_(row[12], row[8]),
       categoryBg: sanitizeHexColor_(row[13]),
       categoryText: sanitizeHexColor_(row[14])
     });
