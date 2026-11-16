@@ -400,6 +400,55 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.equal(overlayWasVisibleDuringFetch, true);
   assert.equal(elements.get('cloudLoadingModal').classList.contains('hidden'), true);
   assert.match(elements.get('cloudLoadingTitle').innerText, /資料載入中/);
+
+  // Dual conflict detection: same date + overlapping time conflicts on EITHER location OR overlapping participants
+  vm.runInContext(`eventsData = [{
+    id: 'base-1',
+    title: '既定課發會',
+    date: '2026-12-02',
+    startTime: '09:25',
+    endTime: '11:05',
+    location: '第二會議室',
+    department: '教務處',
+    participants: '教務處、九年級導師'
+  }];`, ctx);
+  ctx.openAddModal('2026-12-02');
+  elements.get('formLocation').value = '圖書館'; // different room
+  elements.get('periodOpt2').checked = true;     // 09:25~10:10 overlaps
+  ctx.handlePeriodSelectionChange();
+  elements.get('partOpt8').checked = true;       // 九年級導師 overlaps!
+  ctx.checkLiveConflict();
+  assert.match(elements.get('radarText').innerHTML, /參與人員衝堂預警/);
+  assert.match(elements.get('radarText').innerHTML, /九年級導師/);
+
+  // Both room and participant conflict triggers combined alert
+  elements.get('formLocation').value = '第二會議室';
+  ctx.checkLiveConflict();
+  assert.match(elements.get('radarText').innerHTML, /場地與參與人員衝堂預警/);
+
+  // recommendAvailableSlot skips conflicting 第2/3節 and picks non-conflicting 第1節
+  ctx.recommendAvailableSlot();
+  assert.equal(elements.get('periodOpt1').checked, true);
+  assert.match(elements.get('radarText').innerHTML, /時段空閒可用/);
+
+  // submitAddEvent blocks participant conflict even at another venue before calling fetch
+  elements.get('formLocation').value = '圖書館';
+  elements.get('periodOpt2').checked = true;
+  elements.get('periodOpt1').checked = false;
+  ctx.handlePeriodSelectionChange();
+  elements.get('partOpt8').checked = true;
+  elements.get('formTitle').value = '強行重複人員會議';
+  elements.get('formDepartment').value = '學務處';
+  elements.get('formPassword').value = 'pass1234';
+  let postAttemptedOnConflict = false;
+  ctx.fetch = async (url, opts) => {
+    if (opts && opts.method === 'POST') postAttemptedOnConflict = true;
+    return origFetch(url, opts);
+  };
+  await ctx.submitAddEvent({ preventDefault() {} });
+  assert.equal(postAttemptedOnConflict, false);
+  assert.equal(elements.get('formConflictAlert').classList.contains('hidden'), false);
+  assert.match(elements.get('formConflictMsg').innerText, /參與人員衝堂/);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
@@ -773,5 +822,83 @@ test('aiExtractEvent and callGeminiAPI support multimodal meeting screenshot ext
   assert.equal(ctx.formatDate('2026-12-2'), '2026-12-02');
   assert.equal(ctx.formatDate('115年12月2日'), '2026-12-02');
   assert.equal(ctx.formatDate('115/12/02'), '2026-12-02');
+});
+
+test('backend conflict detection rejects overlapping location or overlapping participants at same date/time', () => {
+  const { ctx } = createGasMockHarness();
+  const baseRes = ctx.addEvent({
+    title: '九年級試模擬會',
+    date: '2026-12-02',
+    startTime: '09:25',
+    endTime: '11:05',
+    periods: '第2節、第3節',
+    location: '教師研習中心',
+    department: '教務處',
+    participants: '教務處、九年級導師、張致信主任',
+    category: '行政',
+    password: 'pwd1'
+  });
+  assert.equal(baseRes.status, 'success');
+
+  // Different room, same date + overlapping time, overlapping participant -> rejected as participant conflict
+  const partConflict = ctx.addEvent({
+    title: '衝突測試（不同室同人員）',
+    date: '2026-12-02',
+    startTime: '10:20',
+    endTime: '11:05',
+    location: '圖書館',
+    department: '學務處',
+    participants: '學務處、九年級導師',
+    category: '處室會議',
+    password: 'pwd2'
+  });
+  assert.equal(partConflict.status, 'conflict');
+  assert.equal(partConflict.conflictType, 'participants');
+  assert.deepEqual([...partConflict.overlappingParticipants], ['九年級導師']);
+
+  // Same room AND overlapping participant -> rejected as 'both'
+  const bothConflict = ctx.addEvent({
+    title: '衝突測試（同室且同人員）',
+    date: '2026-12-02',
+    startTime: '09:30',
+    endTime: '10:00',
+    location: '教師研習中心',
+    department: '教務處',
+    participants: '教務處',
+    category: '行政',
+    password: 'pwd3'
+  });
+  assert.equal(bothConflict.status, 'conflict');
+  assert.equal(bothConflict.conflictType, 'both');
+
+  // Different room AND non-overlapping participants at same time -> succeeds!
+  const cleanAdd = ctx.addEvent({
+    title: '輔導處個案會（無人員無場地重疊）',
+    date: '2026-12-02',
+    startTime: '09:30',
+    endTime: '10:30',
+    location: '圖書館',
+    department: '輔導室',
+    participants: '輔導室、七年級導師',
+    category: '處室會議',
+    password: 'pwd4'
+  });
+  assert.equal(cleanAdd.status, 'success');
+
+  // Updating cleanAdd to include overlapping participant at overlapping time -> rejected!
+  const updConflict = ctx.updateEvent({
+    id: cleanAdd.id,
+    title: '輔導處個案會（改加入九年級導師）',
+    date: '2026-12-02',
+    startTime: '09:30',
+    endTime: '10:30',
+    location: '圖書館',
+    department: '輔導室',
+    participants: '輔導室、九年級導師',
+    category: '處室會議',
+    password: 'pwd4'
+  });
+  assert.equal(updConflict.status, 'conflict');
+  assert.equal(updConflict.conflictType, 'participants');
 });
 

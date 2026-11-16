@@ -2449,6 +2449,24 @@
     }
 
     // ── 參與單位複選與「其他」展開控制 ────────────────────────
+    function parseParticipantTokens(rawInput) {
+      const rawList = Array.isArray(rawInput)
+        ? rawInput
+        : String(rawInput || '').split(/[、,，;；/／|&\n]+/);
+      const tokens = [];
+      const seen = new Set();
+      rawList.forEach(item => {
+        const label = String(item || '').trim();
+        if (!label) return;
+        const key = label.replace(/\s+/g, '').toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          tokens.push({ key, label });
+        }
+      });
+      return tokens;
+    }
+
     function handleParticipantsOtherToggle() {
       const otherCb = document.getElementById('partOtherCheckbox');
       const otherInput = document.getElementById('formParticipantsOther');
@@ -2460,20 +2478,31 @@
         otherInput.classList.add('hidden');
         otherInput.value = '';
       }
+      checkLiveConflict();
     }
 
     function getFormParticipants() {
       const selected = [];
+      const seen = new Set();
       for (let i = 0; i < PARTICIPANT_UNITS.length; i++) {
         const box = document.getElementById(`partOpt${i}`);
-        if (box && box.checked) selected.push(PARTICIPANT_UNITS[i]);
+        if (box && box.checked) {
+          const val = PARTICIPANT_UNITS[i];
+          const key = val.replace(/\s+/g, '').toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            selected.push(val);
+          }
+        }
       }
       const otherCb = document.getElementById('partOtherCheckbox');
       const otherInput = document.getElementById('formParticipantsOther');
       if (otherCb && otherCb.checked && otherInput && otherInput.value.trim()) {
-        const extras = otherInput.value.split(/[、,，]+/).map(s => s.trim()).filter(Boolean);
-        extras.forEach(item => {
-          if (!selected.includes(item)) selected.push(item);
+        parseParticipantTokens(otherInput.value).forEach(({ key, label }) => {
+          if (!seen.has(key)) {
+            seen.add(key);
+            selected.push(label);
+          }
         });
       }
       return selected.join('、');
@@ -2492,19 +2521,16 @@
         otherInput.classList.add('hidden');
       }
 
-      const rawList = Array.isArray(participantsInput)
-        ? participantsInput
-        : String(participantsInput || '').split(/[、,，]+/);
-      const items = rawList.map(s => String(s || '').trim()).filter(Boolean);
+      const tokens = parseParticipantTokens(participantsInput);
       const customExtras = [];
 
-      items.forEach(item => {
-        const idx = PARTICIPANT_UNITS.indexOf(item);
+      tokens.forEach(({ label }) => {
+        const idx = PARTICIPANT_UNITS.indexOf(label);
         if (idx !== -1) {
           const box = document.getElementById(`partOpt${idx}`);
           if (box) box.checked = true;
         } else {
-          customExtras.push(item);
+          customExtras.push(label);
         }
       });
 
@@ -2513,6 +2539,7 @@
         otherInput.value = customExtras.join('、');
         otherInput.classList.remove('hidden');
       }
+      checkLiveConflict();
     }
 
     // ── 地點與處室下拉選單控制 ────────────────────────────────
@@ -2610,9 +2637,14 @@
       }
     }
 
-    // ── 即時衝突雷達 (Debounced Live Conflict Radar) ─────────────
+    // ── 即時衝突雷達 (地點＋參與人員雙重防撞期) ────────────────
     let conflictTimer = null;
     function setupLiveConflictListeners() {
+      const debouncedCheck = (delay = 120) => {
+        clearTimeout(conflictTimer);
+        conflictTimer = setTimeout(checkLiveConflict, delay);
+      };
+
       ['formDate', 'formStartTime', 'formEndTime', 'formLocation', 'formLocationOther'].forEach(id => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -2624,15 +2656,64 @@
             const et = document.getElementById('formEndTime')?.value || '';
             if (summaryEl) summaryEl.innerText = st && et ? `自訂時間 (${st} ~ ${et})` : '請設定開始與結束時間';
           }
-          clearTimeout(conflictTimer);
-          conflictTimer = setTimeout(checkLiveConflict, 120);
+          debouncedCheck(120);
         };
         el.addEventListener('input', onTimeInput);
-        el.addEventListener('change', () => {
-          clearTimeout(conflictTimer);
-          conflictTimer = setTimeout(checkLiveConflict, 40);
-        });
+        el.addEventListener('change', () => debouncedCheck(40));
       });
+
+      for (let i = 0; i < PARTICIPANT_UNITS.length; i++) {
+        const box = document.getElementById(`partOpt${i}`);
+        if (box) box.addEventListener('change', () => debouncedCheck(40));
+      }
+      const otherCb = document.getElementById('partOtherCheckbox');
+      if (otherCb) otherCb.addEventListener('change', () => debouncedCheck(40));
+      const otherInput = document.getElementById('formParticipantsOther');
+      if (otherInput) {
+        otherInput.addEventListener('input', () => debouncedCheck(120));
+        otherInput.addEventListener('change', () => debouncedCheck(40));
+      }
+    }
+
+    function detectEventConflict({ date, startTime, endTime, location, participants, excludeId }) {
+      const normDate = normalizeClientDateStr(date);
+      if (!normDate || !startTime || !endTime || startTime >= endTime) return null;
+
+      const normLoc = String(location || '').trim().replace(/\s+/g, '').toLowerCase();
+      const reqTokens = parseParticipantTokens(participants);
+
+      for (const ex of eventsData) {
+        if (excludeId && ex.id === excludeId) continue;
+        if (normalizeClientDateStr(ex.date) !== normDate) continue;
+        if (!(startTime < ex.endTime && endTime > ex.startTime)) continue;
+
+        const exLoc = String(ex.location || '').trim().replace(/\s+/g, '').toLowerCase();
+        const sameLocation = Boolean(normLoc && exLoc && exLoc === normLoc);
+
+        const exTokenKeys = new Set(parseParticipantTokens(ex.participants).map(t => t.key));
+        const overlappingParticipants = reqTokens
+          .filter(t => exTokenKeys.has(t.key))
+          .map(t => t.label);
+
+        if (sameLocation || overlappingParticipants.length > 0) {
+          const type = sameLocation && overlappingParticipants.length > 0
+            ? 'both'
+            : (sameLocation ? 'location' : 'participants');
+          const overlapNames = overlappingParticipants.join('、');
+          const message = type === 'both'
+            ? `【場地與參與人員衝堂】地點「${location}」及參與人員／單位（${overlapNames}）於該時段皆已排定會議：「${ex.title}」(${ex.startTime}~${ex.endTime} ${ex.department})`
+            : (type === 'participants'
+              ? `【參與人員衝堂】「${overlapNames}」在該時段已排定其他會議：「${ex.title}」(${ex.startTime}~${ex.endTime} @ ${ex.location})`
+              : `【場地衝突】${location} 在該時段已有會議：「${ex.title}」(${ex.startTime}~${ex.endTime} ${ex.department})`);
+          return {
+            type,
+            event: ex,
+            overlappingParticipants,
+            message
+          };
+        }
+      }
+      return null;
     }
 
     function checkLiveConflict() {
@@ -2646,14 +2727,15 @@
       const startTime = document.getElementById('formStartTime')?.value;
       const endTime = document.getElementById('formEndTime')?.value;
       const location = getFormLocation();
+      const participants = getFormParticipants();
       const editId = document.getElementById('formEditId')?.value?.trim();
 
       const baseClass = 'p-3 rounded-xl border transition-all duration-200 text-xs flex flex-wrap sm:flex-nowrap items-center justify-between gap-2';
 
-      if (!date || !startTime || !endTime || !location) {
+      if (!date || !startTime || !endTime) {
         radar.className = `${baseClass} bg-slate-50 text-slate-600 border-slate-200`;
         dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-slate-400';
-        text.innerText = '請選取日期、地點與開會節次以啟動即時場地衝突偵測';
+        text.innerText = '請選取日期、地點、開會節次與參與單位以啟動即時衝突偵測';
         if (btnRec) btnRec.classList.add('hidden');
         return;
       }
@@ -2666,48 +2748,54 @@
         return;
       }
 
-      const conflict = eventsData.find(ex => {
-        if (editId && ex.id === editId) return false;
-        if (ex.date === date && (ex.location || '').trim().toLowerCase() === location.toLowerCase()) {
-          return (startTime < ex.endTime && endTime > ex.startTime);
-        }
-        return false;
-      });
-
+      const conflict = detectEventConflict({ date, startTime, endTime, location, participants, excludeId: editId });
       if (conflict) {
         radar.className = `${baseClass} bg-rose-50 text-rose-800 border-rose-200`;
         dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-rose-500 animate-pulse';
-        text.innerHTML = `<strong>場地衝突預警：</strong>${escapeHtml(location)} 該時段已有「${escapeHtml(conflict.title)}」(${escapeHtml(conflict.startTime)}~${escapeHtml(conflict.endTime)} ${escapeHtml(conflict.department)})`;
+        const ex = conflict.event;
+        const overlapNames = escapeHtml(conflict.overlappingParticipants.join('、'));
+        if (conflict.type === 'both') {
+          text.innerHTML = `<strong>場地與參與人員衝堂預警：</strong>「${escapeHtml(location)}」及「${overlapNames}」於該時段均已排定「${escapeHtml(ex.title)}」(${escapeHtml(ex.startTime)}~${escapeHtml(ex.endTime)})`;
+        } else if (conflict.type === 'participants') {
+          text.innerHTML = `<strong>參與人員衝堂預警：</strong>「${overlapNames}」於該時段已安排「${escapeHtml(ex.title)}」(${escapeHtml(ex.startTime)}~${escapeHtml(ex.endTime)} @ ${escapeHtml(ex.location)})`;
+        } else {
+          text.innerHTML = `<strong>場地衝突預警：</strong>${escapeHtml(location)} 該時段已有「${escapeHtml(ex.title)}」(${escapeHtml(ex.startTime)}~${escapeHtml(ex.endTime)} ${escapeHtml(ex.department)})`;
+        }
         if (btnRec) btnRec.classList.remove('hidden');
-      } else {
-        radar.className = `${baseClass} bg-emerald-50 text-emerald-800 border-emerald-200`;
-        dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-emerald-500';
-        text.innerHTML = `<strong>時段空閒可用：</strong>此時段「${escapeHtml(location)}」目前無其他排程衝突，可安心登記！`;
-        if (btnRec) btnRec.classList.add('hidden');
+        return;
       }
+
+      if (!location) {
+        radar.className = `${baseClass} bg-slate-50 text-slate-600 border-slate-200`;
+        dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-slate-400';
+        text.innerText = '請選取會議地點以完成場地與參與人員雙重防衝堂檢查';
+        if (btnRec) btnRec.classList.add('hidden');
+        return;
+      }
+
+      radar.className = `${baseClass} bg-emerald-50 text-emerald-800 border-emerald-200`;
+      dot.className = 'w-2.5 h-2.5 rounded-full shrink-0 bg-emerald-500';
+      text.innerHTML = participants
+        ? `<strong>時段空閒可用：</strong>此時段「${escapeHtml(location)}」與已選參與單位目前皆無其他排程衝突，可安心登記！`
+        : `<strong>時段空閒可用：</strong>此時段「${escapeHtml(location)}」目前無其他排程衝突，可安心登記！`;
+      if (btnRec) btnRec.classList.add('hidden');
     }
 
     function recommendAvailableSlot() {
       const date = document.getElementById('formDate')?.value;
       const location = getFormLocation();
+      const participants = getFormParticipants();
       const editId = document.getElementById('formEditId')?.value?.trim();
-      if (!date || !location) {
-        showToast('請先選定會議日期與地點', 'warning');
+      if (!date || (!location && !participants)) {
+        showToast('請先選定會議日期與地點（或參與單位）', 'warning');
         return;
       }
 
-      const hasOverlap = (st, et) => eventsData.some(ex => {
-        if (editId && ex.id === editId) return false;
-        return ex.date === date &&
-          (ex.location || '').trim().toLowerCase() === location.toLowerCase() &&
-          st < ex.endTime && et > ex.startTime;
-      });
-
-      // 優先推薦常用課堂節次 (第1節~第8節，再試朝會與午休)
+      // 優先推薦常用課堂節次 (第1節~第8節，再試朝會與午休)，同時避開場地與參與人員衝突
       const periodOrder = [1, 2, 3, 4, 6, 7, 8, 9, 0, 5];
       for (const idx of periodOrder) {
         const p = SCHOOL_PERIODS[idx];
-        if (!hasOverlap(p.start, p.end)) {
+        if (!detectEventConflict({ date, startTime: p.start, endTime: p.end, location, participants, excludeId: editId })) {
           setFormPeriodsAndTimes(p.label, p.start, p.end);
           showToast(`已自動推薦並勾選空閒節次：${p.label} (${p.start} ~ ${p.end})`, 'success');
           return;
@@ -2719,14 +2807,14 @@
         { start: '07:30', end: '08:00' }
       ];
       for (const slot of fallbackSlots) {
-        if (!hasOverlap(slot.start, slot.end)) {
+        if (!detectEventConflict({ date, startTime: slot.start, endTime: slot.end, location, participants, excludeId: editId })) {
           setFormPeriodsAndTimes('自訂時間', slot.start, slot.end);
           showToast(`當日節次皆有預約，已推薦延伸空檔：${slot.start} ~ ${slot.end}`, 'success');
           return;
         }
       }
 
-      showToast('當日所有常態節次與時段皆已有預約，建議更換場地或調整日期。', 'warning');
+      showToast('當日所有常態節次皆有場地或參與人員衝突，建議更換場地、調整參與單位或日期。', 'warning');
     }
 
     function resetAddForm() {
@@ -3058,19 +3146,21 @@
         adminToken: (isEditing && isUnlockedAdmin) ? adminSession.token : undefined
       };
 
-      // 前端預檢衝突
-      const conflict = eventsData.find(ex => {
-        if (isEditing && ex.id === editId) return false;
-        if (ex.date === payload.date && (ex.location || '').trim().toLowerCase() === payload.location.toLowerCase()) {
-          return (payload.startTime < ex.endTime && payload.endTime > ex.startTime);
-        }
-        return false;
+      // 前端預檢衝突（地點 + 參與人員雙重檢核）
+      const conflict = detectEventConflict({
+        date: payload.date,
+        startTime: payload.startTime,
+        endTime: payload.endTime,
+        location: payload.location,
+        participants: payload.participants,
+        excludeId: isEditing ? editId : ''
       });
 
       if (conflict) {
         alertBox.classList.remove('hidden');
-        alertMsg.innerText = `【場地衝突】${payload.location} 在該時段已有會議：${conflict.title} (${conflict.startTime}~${conflict.endTime} ${conflict.department})。`;
-        showToast(`場地衝突：${payload.location} 該時段已被預約！`, 'conflict');
+        alertMsg.innerText = conflict.message;
+        alertBox.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+        showToast(conflict.message, 'conflict');
         return;
       }
 

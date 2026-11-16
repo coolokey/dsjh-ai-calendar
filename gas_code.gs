@@ -394,8 +394,44 @@ function hashPassword(password) {
   return txtHash;
 }
 
-// ── 檢查地點與時段衝突 (支援排除指定 ID) ─────────────────────────────
-function checkConflict(date, startTime, endTime, location, excludeId) {
+// ── 解析參與單位／人員清單 (供衝堂比對用) ─────────────────────────────
+function parseParticipantTokens_(raw) {
+  var str = String(raw || '').trim();
+  if (!str) return [];
+  var parts = str.split(/[、,，;；/／|&\n]+/);
+  var tokens = [];
+  var seen = {};
+  for (var i = 0; i < parts.length; i++) {
+    var label = parts[i].trim();
+    if (!label) continue;
+    var key = label.replace(/\s+/g, '').toLowerCase();
+    if (!seen[key]) {
+      seen[key] = true;
+      tokens.push({ key: key, label: label });
+    }
+  }
+  return tokens;
+}
+
+function findOverlappingParticipants_(reqTokens, existingRawParticipants) {
+  if (!reqTokens || reqTokens.length === 0) return [];
+  var existingTokens = parseParticipantTokens_(existingRawParticipants);
+  if (existingTokens.length === 0) return [];
+  var existingMap = {};
+  for (var i = 0; i < existingTokens.length; i++) {
+    existingMap[existingTokens[i].key] = true;
+  }
+  var overlaps = [];
+  for (var j = 0; j < reqTokens.length; j++) {
+    if (existingMap[reqTokens[j].key]) {
+      overlaps.push(reqTokens[j].label);
+    }
+  }
+  return overlaps;
+}
+
+// ── 檢查日期、時段、會議地點與參與人員衝突 (支援排除指定 ID) ────────────
+function checkConflict(date, startTime, endTime, location, excludeId, participants) {
   var sheet = getSheet();
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return null;
@@ -403,8 +439,9 @@ function checkConflict(date, startTime, endTime, location, excludeId) {
   var normDate = formatDate(date);
   var normStart = formatTime(startTime);
   var normEnd = formatTime(endTime);
-  var normLoc = String(location || '').trim().toLowerCase();
-  if (!normLoc) return null;
+  var normLoc = String(location || '').trim().replace(/\s+/g, '').toLowerCase();
+  var reqParticipantTokens = parseParticipantTokens_(participants);
+  if (!normDate || !normStart || !normEnd) return null;
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -414,27 +451,57 @@ function checkConflict(date, startTime, endTime, location, excludeId) {
     var rDate = formatDate(row[2]);
     var rStart = formatTime(row[3]);
     var rEnd = formatTime(row[4]);
-    var rLoc = String(row[5] || '').trim().toLowerCase();
+    if (rDate !== normDate || !(normStart < rEnd && normEnd > rStart)) continue;
 
-    // 同日期、同地點且時段重疊：startA < endB && endA > startB
-    if (rDate === normDate && rLoc === normLoc && normLoc !== '') {
-      if (normStart < rEnd && normEnd > rStart) {
-        return {
-          conflict: true,
-          conflictingEvent: {
-            id: row[0],
-            title: row[1],
-            date: rDate,
-            startTime: rStart,
-            endTime: rEnd,
-            location: row[5],
-            department: row[6]
-          }
-        };
-      }
+    var rLoc = String(row[5] || '').trim().replace(/\s+/g, '').toLowerCase();
+    var sameLocation = Boolean(normLoc && rLoc && rLoc === normLoc);
+    var overlappingParticipants = findOverlappingParticipants_(reqParticipantTokens, row[12]);
+
+    if (sameLocation || overlappingParticipants.length > 0) {
+      var conflictType = sameLocation && overlappingParticipants.length > 0
+        ? 'both'
+        : (sameLocation ? 'location' : 'participants');
+      return {
+        conflict: true,
+        conflictType: conflictType,
+        overlappingParticipants: overlappingParticipants,
+        conflictingEvent: {
+          id: row[0],
+          title: row[1],
+          date: rDate,
+          startTime: rStart,
+          endTime: rEnd,
+          location: row[5],
+          department: row[6],
+          participants: String(row[12] || '')
+        }
+      };
     }
   }
   return null;
+}
+
+function buildConflictResponse_(conflict, location) {
+  var ev = conflict.conflictingEvent;
+  var overlapNames = (conflict.overlappingParticipants || []).join('、');
+  var message = '';
+  if (conflict.conflictType === 'both') {
+    message = '【場地與參與人員衝堂】地點「' + location + '」及參與人員／單位（' + overlapNames +
+              '）在該時段皆已排定會議：「' + ev.title + '」(' + ev.startTime + '~' + ev.endTime + ' ' + ev.department + ')';
+  } else if (conflict.conflictType === 'participants') {
+    message = '【參與人員衝堂】「' + overlapNames + '」在該時段已排定其他會議：「' +
+              ev.title + '」(' + ev.startTime + '~' + ev.endTime + ' @ ' + ev.location + ')';
+  } else {
+    message = '【場地時段衝突】' + location + ' 在該時段已有會議：' +
+              ev.title + ' (' + ev.startTime + '~' + ev.endTime + ' ' + ev.department + ')';
+  }
+  return {
+    status: 'conflict',
+    conflictType: conflict.conflictType,
+    overlappingParticipants: conflict.overlappingParticipants || [],
+    message: message,
+    conflictDetails: ev
+  };
 }
 
 // ── 取得所有會議事件清單 ─────────────────────────────────────────────
@@ -502,18 +569,10 @@ function addEvent(payload) {
       return { status: 'error', message: '開始時間必須早於結束時間。' };
     }
 
-    // 衝突檢查
-    var conflict = checkConflict(date, startTime, endTime, location, null);
+    // 衝突檢查（地點 + 參與人員不可於同日期重疊時段重複）
+    var conflict = checkConflict(date, startTime, endTime, location, null, participants);
     if (conflict) {
-      return {
-        status: 'conflict',
-        message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
-                 conflict.conflictingEvent.title + ' (' +
-                 conflict.conflictingEvent.startTime + '~' +
-                 conflict.conflictingEvent.endTime + ' ' +
-                 conflict.conflictingEvent.department + ')',
-        conflictDetails: conflict.conflictingEvent
-      };
+      return buildConflictResponse_(conflict, location);
     }
 
     var id = Utilities.getUuid().substring(0, 8);
@@ -605,18 +664,10 @@ function updateEvent(payload) {
       return { status: 'error', message: '開始時間必須早於結束時間。' };
     }
 
-    // 衝突檢查 (排除本筆 ID)
-    var conflict = checkConflict(date, startTime, endTime, location, id);
+    // 衝突檢查 (排除本筆 ID，同時比對地點與參與人員)
+    var conflict = checkConflict(date, startTime, endTime, location, id, participants);
     if (conflict) {
-      return {
-        status: 'conflict',
-        message: '【場地時段衝突】' + location + ' 在該時段已有會議：' +
-                 conflict.conflictingEvent.title + ' (' +
-                 conflict.conflictingEvent.startTime + '~' +
-                 conflict.conflictingEvent.endTime + ' ' +
-                 conflict.conflictingEvent.department + ')',
-        conflictDetails: conflict.conflictingEvent
-      };
+      return buildConflictResponse_(conflict, location);
     }
 
     var sheet = getSheet();
