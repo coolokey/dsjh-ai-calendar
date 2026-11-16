@@ -2380,16 +2380,12 @@
       const et = String(endTime || '').trim();
 
       if (matchedIndices.length > 0 && !hasCustomToken) {
-        const spanStart = SCHOOL_PERIODS[matchedIndices[0]].start;
-        const spanEnd = SCHOOL_PERIODS[matchedIndices[matchedIndices.length - 1]].end;
-        if ((!st || st === spanStart) && (!et || et === spanEnd)) {
-          matchedIndices.forEach(idx => {
-            const box = document.getElementById(`periodOpt${idx}`);
-            if (box) box.checked = true;
-          });
-          handlePeriodSelectionChange();
-          return;
-        }
+        matchedIndices.forEach(idx => {
+          const box = document.getElementById(`periodOpt${idx}`);
+          if (box) box.checked = true;
+        });
+        handlePeriodSelectionChange();
+        return;
       }
 
       if (st && et && !hasCustomToken) {
@@ -2406,6 +2402,10 @@
       }
 
       if (st || et || hasCustomToken) {
+        matchedIndices.forEach(idx => {
+          const box = document.getElementById(`periodOpt${idx}`);
+          if (box) box.checked = true;
+        });
         const customBox = document.getElementById('periodCustomCheckbox');
         if (customBox) customBox.checked = true;
         const startInput = document.getElementById('formStartTime');

@@ -956,5 +956,29 @@ test('backend conflict detection rejects overlapping location or overlapping par
 
   const legacyFetched = ctx.getEvents().find(ev => ev.id === legacyRowRes.id);
   assert.equal(legacyFetched.participants, '張致信主任、九年級導師、註冊組長、註冊組幹事');
+
+  // doGet action=checkConflict forwards participants parameter properly
+  ctx.doGet({
+    parameter: {
+      action: 'checkConflict',
+      date: '2026-11-24',
+      startTime: '12:40',
+      endTime: '13:05',
+      location: '校史室',
+      participants: '九年級導師'
+    }
+  });
+  const getCheckRes = JSON.parse(ctx.doGet({
+    parameter: {
+      action: 'checkConflict',
+      date: '2026-11-24',
+      startTime: '12:40',
+      endTime: '13:05',
+      location: '校史室',
+      participants: '九年級導師'
+    }
+  }));
+  assert.equal(getCheckRes.status, 'success');
+  assert.equal(getCheckRes.data.conflictType, 'participants');
 });
 

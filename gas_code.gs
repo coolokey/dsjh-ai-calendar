@@ -783,7 +783,7 @@ function deleteEvent(payload) {
           category: oldRow[7],
           description: oldRow[8],
           periods: oldRow[11] || '',
-          participants: oldRow[12] || ''
+          participants: getEffectiveEventParticipants_(oldRow[12], oldRow[8])
         });
         SpreadsheetApp.flush();
         return { status: 'success', message: '會議已成功刪除。' };
@@ -1405,12 +1405,13 @@ function aiChatSchedule(userMessage) {
   var systemPrompt = 
     "你是一位桃園市立大溪國中的校園行事曆 AI 智慧排程顧問。\n" +
     "今天是 " + todayStr + " (" + dayOfWeek + ")。你手上有目前學校行事曆所有既定會議清單。\n" +
+    "本校作息節次：朝會(08:00-08:20)、第1節(08:30-09:15)、第2節(09:25-10:10)、第3節(10:20-11:05)、第4節(11:15-12:00)、午休(12:00-13:05)、第5節(13:10-13:55)、第6節(14:05-14:50)、第7節(15:00-15:45)、第8節(15:55-16:40)。\n" +
     "本校主要常用場地包括：學生活動中心、行政大樓3F教師研習中心、科技館1F視聽教室、科技館2F科技智慧教室、科技館2F科技創作教室、圖書館、校史室、新大樓1F視聽中心。\n" +
-    "請根據使用者的提問，分析空檔、判斷衝突或提供精準排程建議。\n" +
+    "請根據使用者的提問，同時檢查「場地地點」與「參與單位／人員 (participants)」是否衝堂，分析空檔並提供精準排程建議。\n" +
     "請輸出 JSON 物件：\n" +
     "{\n" +
     '  "reply": "給使用者的白話回覆，語氣親切專業",\n' +
-    '  "suggestedSlot": { "date": "YYYY-MM-DD", "startTime": "HH:mm", "endTime": "HH:mm", "location": "建議場地" } (若無建議則為 null),\n' +
+    '  "suggestedSlot": { "date": "YYYY-MM-DD", "startTime": "HH:mm", "endTime": "HH:mm", "periods": "對應節次(如：第5節、第6節)", "location": "建議場地" } (若無建議則為 null),\n' +
     '  "hasConflict": true/false\n' +
     "}";
 
@@ -1477,7 +1478,8 @@ function doGet(e) {
         e.parameter.startTime,
         e.parameter.endTime,
         e.parameter.location,
-        e.parameter.excludeId
+        e.parameter.excludeId,
+        e.parameter.participants
       );
       responseData = { status: 'success', data: c };
     } else if (action === 'ping') {
