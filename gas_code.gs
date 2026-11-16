@@ -340,7 +340,19 @@ function formatDate(val) {
     return Utilities.formatDate(val, 'Asia/Taipei', 'yyyy-MM-dd');
   }
   var str = String(val).trim().replace(/^'/, '');
-  if (str.match(/^\d{4}-\d{2}-\d{2}$/)) return str;
+  var isoMatch = str.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?:\b|T|\s|\(|$)/);
+  if (isoMatch) {
+    var m = isoMatch[2].length === 1 ? '0' + isoMatch[2] : isoMatch[2];
+    var dPart = isoMatch[3].length === 1 ? '0' + isoMatch[3] : isoMatch[3];
+    return isoMatch[1] + '-' + m + '-' + dPart;
+  }
+  var rocMatch = str.match(/^(\d{2,3})\s*[年/.-]\s*(\d{1,2})\s*[月/.-]\s*(\d{1,2})\s*日?/);
+  if (rocMatch) {
+    var ry = Number(rocMatch[1]) + 1911;
+    var rm = rocMatch[2].length === 1 ? '0' + rocMatch[2] : rocMatch[2];
+    var rd = rocMatch[3].length === 1 ? '0' + rocMatch[3] : rocMatch[3];
+    return ry + '-' + rm + '-' + rd;
+  }
   var cleanStr = str.replace(/\s*\([^)]*\)\s*$/, '');
   var d = new Date(cleanStr);
   if (!isNaN(d.getTime())) {

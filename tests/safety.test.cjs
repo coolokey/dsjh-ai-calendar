@@ -78,7 +78,7 @@ test('callGeminiAPI prioritizes gemini-2.5-flash and falls back to gemini-2.0-fl
   assert.match(requestedUrls[1], /gemini-2\.0-flash/);
 });
 
-test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fallback, and working calendar helpers', () => {
+test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fallback, and working calendar helpers', async () => {
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
   assert.doesNotMatch(html, /demoNoticeBanner|getInitialMockEvents|展示模式|resetToDemoMode/);
   assert.doesNotMatch(html, /\b(?:alert|prompt|confirm)\s*\(/);
@@ -121,11 +121,49 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   for (const id of ids) elements.set(id, makeEl());
   const storage = new Map([['DSJH_GAS_API_URL', 'DEMO_MODE']]);
   const winListeners = {};
+  const fetchCalls = [];
   const ctx = vm.createContext({
     console,
+    AbortController,
     setTimeout: () => 0,
     clearTimeout: () => {},
     requestAnimationFrame: (fn) => fn(),
+    fetch: async (url, opts = {}) => {
+      fetchCalls.push({ url, opts });
+      if (String(url).includes('action=getEvents')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            status: 'success',
+            data: [{
+              id: 'dec-evt-1',
+              title: '12月份期末籌備會',
+              date: '2026/12/2',
+              startTime: '12:40',
+              endTime: '13:05',
+              periods: '自訂時間',
+              location: '圖書館',
+              department: '教務處',
+              participants: '教務處',
+              category: '行政',
+              categoryBg: '#fde2d3',
+              categoryText: '#ed0c2e',
+              description: '',
+              hasPassword: true
+            }]
+          })
+        };
+      }
+      if (opts && opts.method === 'POST') {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: 'success', id: 'dec-evt-1' })
+        };
+      }
+      return { ok: true, status: 200, text: async () => JSON.stringify({ status: 'success' }) };
+    },
     localStorage: {
       getItem: (k) => (storage.has(k) ? storage.get(k) : null),
       setItem: (k, v) => storage.set(k, v),
@@ -234,6 +272,11 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.equal(elements.get('aiImagePreviewBox').classList.contains('hidden'), true);
   assert.equal(elements.get('aiImageEmptyState').classList.contains('hidden'), false);
 
+  // Date normalization handles slash/unpadded/ISO formats cleanly across client and backend
+  assert.equal(ctx.normalizeClientDateStr('2026/12/2'), '2026-12-02');
+  assert.equal(ctx.normalizeClientDateStr('2026-12-2'), '2026-12-02');
+  assert.equal(ctx.normalizeClientDateStr('2026-12-02T00:00:00.000Z'), '2026-12-02');
+
   // Chronological sort helper keeps earlier startTime first
   const sorted = ctx.sortEventsChronological([
     {date: '2026-11-25', startTime: '14:00', endTime: '15:00'},
@@ -293,6 +336,29 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.equal(elements.get('headerSheetLink').href, '#');
   assert.equal(elements.get('setupSheetOpenBtn').href, '#');
   assert.equal(elements.get('btnCopySheetUrl').disabled, true);
+
+  // Submitting a December event while viewing November + another category filter switches straight to December and renders it cleanly
+  vm.runInContext(`currentDate = new Date(2026, 10, 16); currentCategory = '教學研討'; currentView = 'month';`, ctx);
+  ctx.openAddModal('2026-12-02');
+  elements.get('formTitle').value = '12月份期末籌備會';
+  elements.get('formDate').value = '2026-12-02';
+  elements.get('formLocation').value = '圖書館';
+  elements.get('formDepartment').value = '教務處';
+  elements.get('periodCustomCheckbox').checked = true;
+  ctx.handlePeriodSelectionChange();
+  elements.get('formStartTime').value = '12:40';
+  elements.get('formEndTime').value = '13:05';
+  ctx.applyCategoryPreset('行政', '#fde2d3', '#ed0c2e');
+  elements.get('formPassword').value = 'decPass1';
+  await ctx.submitAddEvent({ preventDefault() {} });
+
+  assert.equal(elements.get('currentPeriodLabel').innerText, '2026 年 12 月');
+  assert.equal(vm.runInContext('currentCategory', ctx), 'ALL');
+  assert.match(elements.get('calendarContainer').innerHTML, /12月份期末籌備會/);
+  const getEvCall = fetchCalls.find(c => String(c.url).includes('action=getEvents'));
+  assert.ok(getEvCall);
+  assert.match(getEvCall.url, /_ts=\d+/);
+  assert.equal(getEvCall.opts.cache, undefined);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
@@ -660,5 +726,11 @@ test('aiExtractEvent and callGeminiAPI support multimodal meeting screenshot ext
   });
   assert.equal(sensitiveImgRes.status, 'error');
   assert.equal(fetchPayloads.length, 1);
+
+  // formatDate handles slash, unpadded ISO, and ROC date formats consistently
+  assert.equal(ctx.formatDate('2026/12/2'), '2026-12-02');
+  assert.equal(ctx.formatDate('2026-12-2'), '2026-12-02');
+  assert.equal(ctx.formatDate('115年12月2日'), '2026-12-02');
+  assert.equal(ctx.formatDate('115/12/02'), '2026-12-02');
 });
 

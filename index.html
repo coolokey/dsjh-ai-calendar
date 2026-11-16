@@ -1357,7 +1357,7 @@
       backendSheetInfo.loading = true;
       syncBackendSheetUi();
       try {
-        const res = await safeFetch(`${targetUrl}?action=ping`, {}, 15000);
+        const res = await safeFetch(`${targetUrl}?action=ping&_ts=${Date.now()}`, {}, 15000);
         const json = await res.json();
         if (json && json.status === 'success') {
           applyBackendSheetPayload(targetUrl, json);
@@ -1410,10 +1410,12 @@
       if (loadingBar) loadingBar.classList.remove('hidden');
 
       try {
-        const res = await safeFetch(`${url}?action=getEvents`, {}, 20000);
+        const res = await safeFetch(`${url}?action=getEvents&_ts=${Date.now()}`, {}, 20000);
         const json = await res.json();
         if (json.status === 'success') {
-          eventsData = Array.isArray(json.data) ? json.data : [];
+          eventsData = Array.isArray(json.data)
+            ? json.data.map(ev => ({ ...ev, date: normalizeClientDateStr(ev.date) }))
+            : [];
           hasFetchError = false;
           updateConnectionBadge('connected');
           buildDynamicCategoryLegend();
@@ -1446,6 +1448,16 @@
     }
 
     // ── 日期與排序輔助工具 ────────────────────────────────────
+    function normalizeClientDateStr(val) {
+      if (!val) return '';
+      const s = String(val).trim().replace(/^'/, '');
+      const m = s.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+      if (m) {
+        return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
+      }
+      return s;
+    }
+
     function formatDateStr(d) {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -2845,10 +2857,14 @@
         const json = await res.json();
 
         if (json.status === 'success') {
+          const deletedId = activeEvent.id;
+          eventsData = eventsData.filter(ev => ev.id !== deletedId);
           closeModal('deleteConfirmModal');
           closeModal('eventDetailModal');
+          buildDynamicCategoryLegend();
+          renderCalendar();
           showToast('會議已自雲端試算表成功移除！', 'success');
-          fetchLiveEvents();
+          await fetchLiveEvents();
         } else {
           showToast('刪除失敗：' + (json.message || '管理密碼不正確'), 'error');
         }
@@ -2956,10 +2972,56 @@
         const json = await res.json();
 
         if (json.status === 'success') {
+          const savedDateStr = normalizeClientDateStr(payload.date);
+          const savedEvent = {
+            id: String(isEditing ? editId : (json.id || `tmp-${Date.now()}`)),
+            title: payload.title,
+            date: savedDateStr,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            periods: payload.periods,
+            location: payload.location,
+            department: payload.department,
+            participants: payload.participants,
+            category: payload.category,
+            categoryBg: payload.categoryBg,
+            categoryText: payload.categoryText,
+            description: payload.description,
+            hasPassword: Boolean(payload.password) || (isEditing && activeEvent ? Boolean(activeEvent.hasPassword) : false)
+          };
+
+          if (isEditing) {
+            const idx = eventsData.findIndex(item => item.id === savedEvent.id);
+            if (idx >= 0) eventsData[idx] = { ...eventsData[idx], ...savedEvent };
+            else eventsData.push(savedEvent);
+          } else {
+            eventsData.push(savedEvent);
+          }
+
+          if (savedDateStr) {
+            currentDate = parseLocalDate(savedDateStr);
+          }
+          if (currentCategory !== 'ALL' && currentCategory !== payload.category) {
+            currentCategory = 'ALL';
+          }
+          if (currentSearchTerm && !filterEvents([savedEvent]).length) {
+            currentSearchTerm = '';
+            const searchEl = document.getElementById('searchInput');
+            if (searchEl) searchEl.value = '';
+            document.getElementById('btnClearSearch')?.classList.add('hidden');
+          }
+
           closeModal('addEventModal');
           resetAddForm();
-          showToast(isEditing ? '會議排程已更新並同步至雲端！' : '會議已成功預約並儲存至雲端！', 'success');
-          fetchLiveEvents();
+          buildDynamicCategoryLegend();
+          renderCalendar();
+          showToast(
+            isEditing
+              ? `會議排程已更新，目前顯示 ${savedDateStr.slice(0, 7).replace('-', ' 年 ')} 月！`
+              : `會議已成功預約，已自動切換至 ${savedDateStr.slice(0, 7).replace('-', ' 年 ')} 月顯示！`,
+            'success'
+          );
+          await fetchLiveEvents();
         } else if (json.status === 'conflict') {
           alertBox.classList.remove('hidden');
           alertMsg.innerText = json.message;
