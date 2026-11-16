@@ -386,6 +386,20 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   ctx.clearAllFilters();
   assert.equal(searchEl.value, '');
   assert.match(elements.get('calendarContainer').innerHTML, /12月份期末籌備會/);
+
+  // Cloud loading overlay modal appears during initial/manual sync and hides reliably afterwards
+  elements.get('cloudLoadingModal').classList.add('hidden');
+  let overlayWasVisibleDuringFetch = false;
+  const origFetch = ctx.fetch;
+  ctx.fetch = async (url, opts) => {
+    overlayWasVisibleDuringFetch = !elements.get('cloudLoadingModal').classList.contains('hidden');
+    return origFetch(url, opts);
+  };
+  vm.runInContext(`eventsData = [];`, ctx);
+  await ctx.fetchLiveEvents();
+  assert.equal(overlayWasVisibleDuringFetch, true);
+  assert.equal(elements.get('cloudLoadingModal').classList.contains('hidden'), true);
+  assert.match(elements.get('cloudLoadingTitle').innerText, /資料載入中/);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {
