@@ -171,6 +171,7 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
     },
     navigator: {clipboard: {writeText: async () => {}}},
     document: {
+      activeElement: {},
       getElementById: (id) => elements.get(id) || null,
       querySelectorAll: () => [],
       addEventListener: () => {},
@@ -359,6 +360,32 @@ test('index.html has valid JS syntax, matching DOM IDs, no demo banner/mode fall
   assert.ok(getEvCall);
   assert.match(getEvCall.url, /_ts=\d+/);
   assert.equal(getEvCall.opts.cache, undefined);
+
+  // Autofill protection: searchInput is isolated as type="search" and every password input uses autocomplete="new-password"
+  const pwdInputs = [...html.matchAll(/<input\b[^>]*type=['"]password['"][^>]*>/g)].map(m => m[0]);
+  assert.ok(pwdInputs.length >= 9);
+  for (const tag of pwdInputs) {
+    assert.match(tag, /autocomplete=['"]new-password['"]/);
+  }
+  const searchTag = html.match(/<input\b[^>]*id=['"]searchInput['"][^>]*>/)?.[0] || '';
+  assert.match(searchTag, /type=['"]search['"]/);
+  assert.match(searchTag, /autocomplete=['"]off['"]/);
+
+  // Silent browser autofill (e.g., saved GitHub username "coolokey") is stripped automatically
+  const searchEl = elements.get('searchInput');
+  searchEl.value = 'coolokey';
+  ctx.onSearchBoxInput(searchEl);
+  assert.equal(searchEl.value, '');
+  assert.match(elements.get('calendarContainer').innerHTML, /12月份期末籌備會/);
+
+  // Real user search shows active filter banner and clearAllFilters restores visibility
+  ctx.markSearchInputActivated();
+  searchEl.value = '不存在的關鍵字';
+  ctx.onSearchBoxInput(searchEl);
+  assert.match(elements.get('calendarContainer').innerHTML, /顯示全部會議/);
+  ctx.clearAllFilters();
+  assert.equal(searchEl.value, '');
+  assert.match(elements.get('calendarContainer').innerHTML, /12月份期末籌備會/);
 });
 
 function createGasMockHarness(initialProps = [['SPREADSHEET_ID', 'sheet-id-1'], ['GEMINI_API_KEY', 'seed-key-123']]) {

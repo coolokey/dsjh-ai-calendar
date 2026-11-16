@@ -303,14 +303,14 @@
 
         <!-- 右側：搜尋框、手機分類選單與檢視模式切換 -->
         <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2">
-          <!-- 搜尋輸入框 (附清除鈕) -->
-          <div class="relative flex-1 sm:flex-initial">
+          <!-- 搜尋輸入框 (獨立搜尋 form 隔離密碼管理員自動填入，附清除鈕) -->
+          <form role="search" autocomplete="off" onsubmit="return false;" class="relative flex-1 sm:flex-initial">
             <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs pointer-events-none"></i>
-            <input type="text" id="searchInput" oninput="handleSearch(this.value)" placeholder="搜尋會議、場地、處室..." class="pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white w-full sm:w-52 transition">
+            <input type="search" id="searchInput" name="calendar_keyword_filter" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore="true" aria-label="搜尋會議、場地、處室" onpointerdown="markSearchInputActivated()" onfocus="markSearchInputActivated()" oninput="onSearchBoxInput(this)" placeholder="搜尋會議、場地、處室..." class="pl-8 pr-7 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:bg-white w-full sm:w-52 transition">
             <button type="button" id="btnClearSearch" onclick="clearSearchInput()" class="hidden absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 p-0.5 cursor-pointer" title="清除搜尋">
               <i class="fa-solid fa-xmark text-xs"></i>
             </button>
-          </div>
+          </form>
 
           <!-- 分類下拉選單 (小螢幕快速切換，依現有分類動態產生) -->
           <select id="categoryFilter" onchange="handleCategoryFilter(this.value)" class="md:hidden text-xs py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 text-slate-700 font-semibold">
@@ -574,14 +574,14 @@
         </button>
       </div>
 
-      <form id="addEventForm" onsubmit="submitAddEvent(event)" class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
+      <form id="addEventForm" autocomplete="off" onsubmit="submitAddEvent(event)" class="p-6 overflow-y-auto space-y-4 custom-scrollbar">
         <!-- 隱藏 ID (編輯模式用) -->
         <input type="hidden" id="formEditId" value="">
 
         <!-- 1. 標題 -->
         <div>
           <label for="formTitle" class="block text-xs font-bold text-slate-700 mb-1.5">標題 <span class="text-rose-500">*</span></label>
-          <input type="text" id="formTitle" required maxlength="100" placeholder="會議或活動名稱" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] transition">
+          <input type="text" id="formTitle" autocomplete="off" data-lpignore="true" required maxlength="100" placeholder="會議或活動名稱" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298] transition">
         </div>
 
         <!-- 2. 日期與地點並排 -->
@@ -763,7 +763,7 @@
         <!-- 7. 設定密碼（必填） -->
         <div>
           <label for="formPassword" id="formPasswordLabel" class="block text-xs font-bold text-slate-700 mb-1.5">設定密碼 <span id="formPasswordRequiredStar" class="text-rose-500">*</span></label>
-          <input type="password" id="formPassword" required maxlength="50" placeholder="設定此筆資料的密碼" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
+          <input type="password" id="formPassword" name="meeting_manage_code" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" required maxlength="50" placeholder="設定此筆資料的密碼" class="w-full px-3.5 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2a5298]">
           <p id="formPasswordHint" class="text-[11px] text-amber-700 mt-1 flex items-center gap-1">
             <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
             <span>請牢記此密碼以供日後修改或刪除驗證；若忘記密碼可聯繫系統管理者覆寫處理。</span>
@@ -913,7 +913,7 @@
             請輸入管理者密碼以解鎖：<strong>後台 Google 試算表連結</strong>、<strong>Gemini API Key 設定</strong>與<strong>雲端後端 API 網址配置</strong>。
           </p>
           <div class="flex flex-col sm:flex-row gap-2">
-            <input type="password" id="adminLoginPwdInput" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); doCalendarAdminLogin();}" placeholder="請輸入管理者密碼（首次預設 admin888）" class="flex-1 px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+            <input type="password" id="adminLoginPwdInput" name="calendar_admin_pin" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); doCalendarAdminLogin();}" placeholder="請輸入管理者密碼（首次預設 admin888）" class="flex-1 px-3.5 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
             <button type="button" id="btnAdminLogin" onclick="doCalendarAdminLogin()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition cursor-pointer shrink-0 disabled:opacity-60">
               登入管理設定
             </button>
@@ -940,9 +940,9 @@
             為保護試算表連結與 API 金鑰安全，首次使用預設密碼 admin888 登入後，必須先設定 8 碼以上專屬密碼，系統將同步寫入試算表「管理者名單」與「系統設定」。
           </p>
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <input type="password" id="calForceOldPwd" placeholder="目前密碼 (admin888)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
-            <input type="password" id="calForceNewPwd1" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
-            <input type="password" id="calForceNewPwd2" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(true);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+            <input type="password" id="calForceOldPwd" autocomplete="new-password" data-lpignore="true" placeholder="目前密碼 (admin888)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+            <input type="password" id="calForceNewPwd1" autocomplete="new-password" data-lpignore="true" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
+            <input type="password" id="calForceNewPwd2" autocomplete="new-password" data-lpignore="true" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(true);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono">
           </div>
           <div id="adminForcePwdFeedback" class="hidden p-2 rounded-lg text-xs border"></div>
           <div class="flex justify-end">
@@ -999,7 +999,7 @@
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div class="sm:col-span-2">
               <label for="adminGeminiKeyInput" class="block text-[11px] font-bold text-slate-700 mb-1">Gemini API Key（唯寫保護，送出後不會明文回顯）</label>
-              <input type="password" id="adminGeminiKeyInput" placeholder="貼上 AIza... 金鑰（留空＝保留試算表現有設定）" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+              <input type="password" id="adminGeminiKeyInput" name="calendar_gemini_key" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" placeholder="貼上 AIza... 金鑰（留空＝保留試算表現有設定）" class="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
             </div>
             <div>
               <label for="adminGeminiModelSelect" class="block text-[11px] font-bold text-slate-700 mb-1">Gemini 優先模型</label>
@@ -1025,9 +1025,9 @@
             </summary>
             <div class="mt-2.5 space-y-2">
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input type="password" id="calChangeOldPwd" placeholder="目前舊密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
-                <input type="password" id="calChangeNewPwd1" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
-                <input type="password" id="calChangeNewPwd2" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(false);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                <input type="password" id="calChangeOldPwd" autocomplete="new-password" data-lpignore="true" placeholder="目前舊密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                <input type="password" id="calChangeNewPwd1" autocomplete="new-password" data-lpignore="true" placeholder="新密碼 (至少8碼)" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
+                <input type="password" id="calChangeNewPwd2" autocomplete="new-password" data-lpignore="true" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); submitCalendarPasswordChange(false);}" placeholder="確認新密碼" class="px-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-mono">
               </div>
               <div id="adminChangePwdFeedback" class="hidden p-2 rounded-lg text-xs border"></div>
               <div class="flex justify-end">
@@ -1112,7 +1112,7 @@
       </div>
       <div class="space-y-1.5">
         <label for="deleteInputPassword" class="block text-xs font-bold text-slate-700">管理密碼驗證</label>
-        <input type="password" id="deleteInputPassword" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); executeDeleteEvent();}" placeholder="請輸入建立此會議時的密碼（或管理者密碼）" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono">
+        <input type="password" id="deleteInputPassword" name="meeting_delete_code" autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" onkeydown="if(event.key==='Enter' && !event.isComposing){event.preventDefault(); executeDeleteEvent();}" placeholder="請輸入建立此會議時的密碼（或管理者密碼）" class="w-full px-3.5 py-2 text-sm bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white font-mono">
         <p class="text-[11px] text-slate-400">※ 請輸入建立時設定之會議密碼，或已自訂之試算表「管理者名單」管理密碼。刪除後將永久移除。</p>
       </div>
       <div class="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
@@ -1219,9 +1219,36 @@
     let hasFetchError = false;
     let currentSearchTerm = '';
     let currentCategory = 'ALL';
+    let searchInputUserActivated = false;
+
+    function markSearchInputActivated() {
+      searchInputUserActivated = true;
+    }
+
+    function clearBrowserAutofillSearch() {
+      const el = document.getElementById('searchInput');
+      if (!el) return;
+      if (!searchInputUserActivated && document.activeElement !== el && el.value) {
+        el.value = '';
+        if (currentSearchTerm) handleSearch('');
+      }
+    }
+
+    function onSearchBoxInput(el) {
+      if (!el) return;
+      if (!searchInputUserActivated && document.activeElement && document.activeElement !== el) {
+        el.value = '';
+        if (currentSearchTerm) handleSearch('');
+        return;
+      }
+      handleSearch(el.value);
+    }
 
     // ── 初始化 ────────────────────────────────────────────────
     window.addEventListener('DOMContentLoaded', () => {
+      const searchEl = document.getElementById('searchInput');
+      if (searchEl) searchEl.value = '';
+      currentSearchTerm = '';
       buildDynamicCategoryLegend();
       syncCategoryPreview();
       setupLiveConflictListeners();
@@ -1229,6 +1256,12 @@
       // 立即繪製當前月份骨架，避免載入時閃爍空白
       renderCalendar();
       fetchLiveEvents();
+      setTimeout(clearBrowserAutofillSearch, 250);
+      setTimeout(clearBrowserAutofillSearch, 900);
+    });
+
+    window.addEventListener('pageshow', () => {
+      clearBrowserAutofillSearch();
     });
 
     // Esc 快捷鍵關閉所有彈窗
@@ -1648,6 +1681,39 @@
       } else {
         renderListView();
       }
+      prependActiveFilterBannerIfNeeded();
+    }
+
+    function prependActiveFilterBannerIfNeeded() {
+      if ((!currentSearchTerm && currentCategory === 'ALL') || eventsData.length === 0) return;
+      const container = document.getElementById('calendarContainer');
+      if (!container) return;
+      const parts = [];
+      if (currentCategory !== 'ALL') parts.push(`分類：「${escapeHtml(currentCategory)}」`);
+      if (currentSearchTerm) parts.push(`搜尋關鍵字：「${escapeHtml(currentSearchTerm)}」`);
+      const filteredCount = filterEvents(eventsData).length;
+      const bannerHtml = `
+        <div class="no-print px-4 py-2.5 bg-amber-50 border-b border-amber-200 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-950">
+          <div class="flex items-center gap-2 min-w-0">
+            <i class="fa-solid fa-filter text-amber-600 shrink-0"></i>
+            <span class="truncate font-medium">目前已套用篩選條件（${parts.join(' ＋ ')}），符合 <strong class="tabular-nums">${filteredCount}</strong> / <span class="tabular-nums">${eventsData.length}</span> 筆排程</span>
+          </div>
+          <button type="button" onclick="clearAllFilters()" class="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] transition cursor-pointer shrink-0">
+            顯示全部會議
+          </button>
+        </div>
+      `;
+      container.innerHTML = bannerHtml + container.innerHTML;
+    }
+
+    function clearAllFilters() {
+      const input = document.getElementById('searchInput');
+      if (input) input.value = '';
+      currentSearchTerm = '';
+      currentCategory = 'ALL';
+      document.getElementById('btnClearSearch')?.classList.add('hidden');
+      buildDynamicCategoryLegend();
+      renderCalendar();
     }
 
     function renderFetchErrorState() {
@@ -2046,6 +2112,7 @@
     function clearSearchInput() {
       const input = document.getElementById('searchInput');
       if (input) input.value = '';
+      searchInputUserActivated = false;
       handleSearch('');
     }
 
